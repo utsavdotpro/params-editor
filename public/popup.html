@@ -8,16 +8,34 @@
         padding: 16px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           Oxygen, Ubuntu, Cantarell, sans-serif;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        margin: 0;
       }
       .container {
         display: flex;
         flex-direction: column;
+        flex: 1;
         gap: 16px;
+        position: relative;
       }
       .url-section {
+        position: sticky;
+        top: 0;
+        background: white;
+        padding: 16px 0;
+        z-index: 1;
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+      .url-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+        position: relative;
       }
       .url-display {
         font-family: monospace;
@@ -25,10 +43,27 @@
         background: #f5f5f5;
         border-radius: 4px;
         word-break: break-all;
+        max-height: 4.5em;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        position: relative;
+        flex: 1;
+      }
+      .url-display:hover {
+        max-height: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        z-index: 2;
+        padding: 8px;
       }
       .params-table {
         width: 100%;
         border-collapse: collapse;
+        flex: 1;
       }
       .params-table th,
       .params-table td {
@@ -59,7 +94,12 @@
       .add-param-section {
         display: flex;
         gap: 8px;
-        margin-top: 16px;
+        position: sticky;
+        bottom: 0;
+        background: white;
+        padding: 16px 0;
+        z-index: 1;
+        border-top: 1px solid #eee;
       }
       .add-param-input {
         flex: 1;
@@ -67,7 +107,7 @@
       .action-buttons {
         display: flex;
         gap: 8px;
-        margin-top: 16px;
+        margin-left: auto;
       }
       button {
         padding: 8px 16px;
@@ -129,38 +169,37 @@
       input:checked + .toggle-slider:before {
         transform: translateX(26px);
       }
+      .params-container {
+        flex: 1;
+        overflow-y: auto;
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <div class="url-section">
-        <div
-          style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          "
-        >
-          <h2 style="margin: 0">Query Param Editor</h2>
+        <div class="url-header">
+          <div class="url-display" id="urlDisplay"></div>
           <button class="secondary-btn" id="refreshBtn">
             <span style="font-size: 1.2em">↻</span> Refresh
           </button>
         </div>
-        <div class="url-display" id="urlDisplay"></div>
       </div>
 
-      <table class="params-table" id="paramsTable">
-        <thead>
-          <tr>
-            <th>Param Key</th>
-            <th>Param Value</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="paramsBody">
-          <!-- Parameters will be added here dynamically -->
-        </tbody>
-      </table>
+      <div class="params-container">
+        <table class="params-table" id="paramsTable">
+          <thead>
+            <tr>
+              <th>Param Key</th>
+              <th>Param Value</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="paramsBody">
+            <!-- Parameters will be added here dynamically -->
+          </tbody>
+        </table>
+      </div>
 
       <div class="add-param-section">
         <input
@@ -176,11 +215,10 @@
           placeholder="Value"
         />
         <button class="primary-btn" id="addParamBtn">+ Add Param</button>
-      </div>
-
-      <div class="action-buttons">
-        <button class="primary-btn" id="applyBtn">Apply Changes</button>
-        <button class="secondary-btn" id="resetBtn">Reset</button>
+        <div class="action-buttons">
+          <button class="primary-btn" id="applyBtn">Apply Changes</button>
+          <button class="secondary-btn" id="resetBtn">Reset</button>
+        </div>
       </div>
     </div>
     <script src="popup.js"></script>

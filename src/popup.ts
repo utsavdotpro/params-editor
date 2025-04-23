@@ -119,7 +119,13 @@ class ParamsEditor {
 
       // Key cell
       const keyCell = document.createElement("td");
-      keyCell.textContent = param.key;
+      const keyInput = document.createElement("input");
+      keyInput.type = "text";
+      keyInput.className = "param-input";
+      keyInput.value = param.key;
+      keyInput.onchange = (e) =>
+        this.updateParamKey(index, (e.target as HTMLInputElement).value);
+      keyCell.appendChild(keyInput);
       row.appendChild(keyCell);
 
       // Value cell
@@ -199,6 +205,12 @@ class ParamsEditor {
     if (index >= 0 && index < this.currentParams.length) {
       this.currentParams[index].value = value;
       this.currentParams[index].type = this.detectParamType(value);
+    }
+  }
+
+  private updateParamKey(index: number, key: string) {
+    if (index >= 0 && index < this.currentParams.length) {
+      this.currentParams[index].key = key;
     }
   }
 
