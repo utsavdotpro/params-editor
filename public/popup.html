@@ -1,35 +1,187 @@
 <!doctype html>
 <html>
   <head>
-    <title>Params Editor</title>
+    <title>Query Param Editor</title>
     <style>
       body {
-        width: 300px;
-        padding: 10px;
-        font-family: Arial, sans-serif;
+        width: 500px;
+        padding: 16px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
       }
       .container {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 16px;
+      }
+      .url-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .url-display {
+        font-family: monospace;
+        padding: 8px;
+        background: #f5f5f5;
+        border-radius: 4px;
+        word-break: break-all;
+      }
+      .params-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .params-table th,
+      .params-table td {
+        padding: 8px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+      }
+      .param-input {
+        width: 100%;
+        padding: 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .param-input:focus {
+        outline: none;
+        border-color: #4caf50;
+      }
+      .remove-btn {
+        background: none;
+        border: none;
+        color: #ff4444;
+        cursor: pointer;
+        padding: 4px;
+      }
+      .remove-btn:hover {
+        color: #cc0000;
+      }
+      .add-param-section {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .add-param-input {
+        flex: 1;
+      }
+      .action-buttons {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
       }
       button {
         padding: 8px 16px;
-        background-color: #4caf50;
-        color: white;
         border: none;
         border-radius: 4px;
         cursor: pointer;
+        font-weight: 500;
       }
-      button:hover {
+      .primary-btn {
+        background-color: #4caf50;
+        color: white;
+      }
+      .primary-btn:hover {
         background-color: #45a049;
+      }
+      .secondary-btn {
+        background-color: #f5f5f5;
+        color: #333;
+      }
+      .secondary-btn:hover {
+        background-color: #e0e0e0;
+      }
+      .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 24px;
+      }
+      .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: 0.4s;
+        border-radius: 24px;
+      }
+      .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: 0.4s;
+        border-radius: 50%;
+      }
+      input:checked + .toggle-slider {
+        background-color: #4caf50;
+      }
+      input:checked + .toggle-slider:before {
+        transform: translateX(26px);
       }
     </style>
   </head>
   <body>
     <div class="container">
-      <h2>Params Editor</h2>
-      <button id="editParams">Edit Parameters</button>
+      <div class="url-section">
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          "
+        >
+          <h2 style="margin: 0">Query Param Editor</h2>
+          <button class="secondary-btn" id="refreshBtn">
+            <span style="font-size: 1.2em">↻</span> Refresh
+          </button>
+        </div>
+        <div class="url-display" id="urlDisplay"></div>
+      </div>
+
+      <table class="params-table" id="paramsTable">
+        <thead>
+          <tr>
+            <th>Param Key</th>
+            <th>Param Value</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="paramsBody">
+          <!-- Parameters will be added here dynamically -->
+        </tbody>
+      </table>
+
+      <div class="add-param-section">
+        <input
+          type="text"
+          class="param-input add-param-input"
+          id="newParamKey"
+          placeholder="Key"
+        />
+        <input
+          type="text"
+          class="param-input add-param-input"
+          id="newParamValue"
+          placeholder="Value"
+        />
+        <button class="primary-btn" id="addParamBtn">+ Add Param</button>
+      </div>
+
+      <div class="action-buttons">
+        <button class="primary-btn" id="applyBtn">Apply Changes</button>
+        <button class="secondary-btn" id="resetBtn">Reset</button>
+      </div>
     </div>
     <script src="popup.js"></script>
   </body>
