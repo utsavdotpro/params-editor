@@ -3,7 +3,8 @@
   "name": "Params Editor",
   "version": "1.0.0",
   "description": "Edit URL query parameters with smart input types",
-  "permissions": ["activeTab", "tabs"],
+  "permissions": ["activeTab", "tabs", "scripting"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },

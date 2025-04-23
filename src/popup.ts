@@ -12,24 +12,53 @@ class ParamsEditor {
   private originalParams: Param[] = [];
 
   constructor() {
+    console.log("ParamsEditor initialized");
     this.initializeElements();
     this.loadCurrentUrl();
     this.setupEventListeners();
   }
 
   private initializeElements() {
-    // Elements will be initialized when needed
+    console.log("Initializing elements");
+    // Initialize input elements
+    const keyInput = document.getElementById("newParamKey") as HTMLInputElement;
+    const valueInput = document.getElementById(
+      "newParamValue"
+    ) as HTMLInputElement;
+
+    if (keyInput && valueInput) {
+      // Add keyboard event listeners for Enter key
+      keyInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          valueInput.focus();
+        }
+      });
+
+      valueInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          this.addNewParam();
+        }
+      });
+    }
   }
 
   private async loadCurrentUrl() {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (tab?.url) {
-      this.originalUrl = tab.url;
-      this.updateUrlDisplay();
-      this.parseAndDisplayParams();
+    console.log("Loading current URL");
+    try {
+      // Get current URL from background script
+      const response = await chrome.runtime.sendMessage({
+        type: "GET_CURRENT_URL",
+      });
+      console.log("Received URL response:", response);
+      if (response?.url) {
+        this.originalUrl = response.url;
+        this.updateUrlDisplay();
+        this.parseAndDisplayParams();
+      } else {
+        console.error("Failed to get current URL");
+      }
+    } catch (error) {
+      console.error("Error loading current URL:", error);
     }
   }
 
@@ -41,21 +70,25 @@ class ParamsEditor {
   }
 
   private parseAndDisplayParams() {
-    const url = new URL(this.originalUrl);
-    this.currentParams = [];
-    this.originalParams = [];
+    try {
+      const url = new URL(this.originalUrl);
+      this.currentParams = [];
+      this.originalParams = [];
 
-    url.searchParams.forEach((value, key) => {
-      const param: Param = {
-        key,
-        value,
-        type: this.detectParamType(value),
-      };
-      this.currentParams.push(param);
-      this.originalParams.push({ ...param });
-    });
+      url.searchParams.forEach((value, key) => {
+        const param: Param = {
+          key,
+          value,
+          type: this.detectParamType(value),
+        };
+        this.currentParams.push(param);
+        this.originalParams.push({ ...param });
+      });
 
-    this.renderParams();
+      this.renderParams();
+    } catch (error) {
+      console.error("Error parsing URL parameters:", error);
+    }
   }
 
   private detectParamType(value: string): Param["type"] {
@@ -165,6 +198,7 @@ class ParamsEditor {
   private updateParamValue(index: number, value: string) {
     if (index >= 0 && index < this.currentParams.length) {
       this.currentParams[index].value = value;
+      this.currentParams[index].type = this.detectParamType(value);
     }
   }
 
@@ -174,74 +208,121 @@ class ParamsEditor {
   }
 
   private addNewParam() {
+    console.log("Adding new parameter");
     const keyInput = document.getElementById("newParamKey") as HTMLInputElement;
     const valueInput = document.getElementById(
       "newParamValue"
     ) as HTMLInputElement;
 
-    if (
-      keyInput &&
-      valueInput &&
-      keyInput.value.trim() &&
-      valueInput.value.trim()
-    ) {
-      const newParam: Param = {
-        key: keyInput.value.trim(),
-        value: valueInput.value.trim(),
-        type: this.detectParamType(valueInput.value.trim()),
-      };
+    if (keyInput && valueInput) {
+      const key = keyInput.value.trim();
+      const value = valueInput.value.trim();
 
-      this.currentParams.push(newParam);
-      this.renderParams();
+      if (key && value) {
+        // Check if key already exists
+        const existingIndex = this.currentParams.findIndex(
+          (p) => p.key === key
+        );
+        if (existingIndex >= 0) {
+          // Update existing parameter
+          this.updateParamValue(existingIndex, value);
+        } else {
+          // Add new parameter
+          const newParam: Param = {
+            key,
+            value,
+            type: this.detectParamType(value),
+          };
+          this.currentParams.push(newParam);
+        }
 
-      // Clear inputs
-      keyInput.value = "";
-      valueInput.value = "";
+        this.renderParams();
+
+        // Clear inputs
+        keyInput.value = "";
+        valueInput.value = "";
+        keyInput.focus();
+      }
     }
   }
 
   private async applyChanges() {
-    const url = new URL(this.originalUrl);
-    url.search = "";
+    console.log("Applying changes");
+    try {
+      const url = new URL(this.originalUrl);
+      url.search = "";
 
-    this.currentParams.forEach((param) => {
-      url.searchParams.append(param.key, param.value);
-    });
+      this.currentParams.forEach((param) => {
+        url.searchParams.append(param.key, param.value);
+      });
 
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (tab?.id) {
-      await chrome.tabs.update(tab.id, { url: url.toString() });
-      this.originalUrl = url.toString();
+      const newUrl = url.toString();
+      console.log("New URL:", newUrl);
+
+      // Send message to background script to update URL
+      await chrome.runtime.sendMessage({
+        type: "UPDATE_URL",
+        url: newUrl,
+      });
+
+      // Update local state
+      this.originalUrl = newUrl;
       this.updateUrlDisplay();
       this.originalParams = [...this.currentParams];
+    } catch (error) {
+      console.error("Error applying changes:", error);
     }
   }
 
   private resetChanges() {
+    console.log("Resetting changes");
     this.currentParams = [...this.originalParams];
     this.renderParams();
   }
 
   private setupEventListeners() {
-    document
-      .getElementById("refreshBtn")
-      ?.addEventListener("click", () => this.loadCurrentUrl());
-    document
-      .getElementById("addParamBtn")
-      ?.addEventListener("click", () => this.addNewParam());
-    document
-      .getElementById("applyBtn")
-      ?.addEventListener("click", () => this.applyChanges());
-    document
-      .getElementById("resetBtn")
-      ?.addEventListener("click", () => this.resetChanges());
+    console.log("Setting up event listeners");
+
+    // Refresh button
+    const refreshBtn = document.getElementById("refreshBtn");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", () => {
+        console.log("Refresh button clicked");
+        this.loadCurrentUrl();
+      });
+    }
+
+    // Add parameter button
+    const addParamBtn = document.getElementById("addParamBtn");
+    if (addParamBtn) {
+      addParamBtn.addEventListener("click", () => {
+        console.log("Add parameter button clicked");
+        this.addNewParam();
+      });
+    }
+
+    // Apply changes button
+    const applyBtn = document.getElementById("applyBtn");
+    if (applyBtn) {
+      applyBtn.addEventListener("click", () => {
+        console.log("Apply changes button clicked");
+        this.applyChanges();
+      });
+    }
+
+    // Reset button
+    const resetBtn = document.getElementById("resetBtn");
+    if (resetBtn) {
+      resetBtn.addEventListener("click", () => {
+        console.log("Reset button clicked");
+        this.resetChanges();
+      });
+    }
   }
 }
 
 // Initialize the editor when the DOM is loaded
 document.addEventListener("DOMContentLoaded", () => {
+  console.log("DOM Content Loaded");
   new ParamsEditor();
 });
