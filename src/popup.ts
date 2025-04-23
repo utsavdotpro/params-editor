@@ -137,7 +137,12 @@ class ParamsEditor {
       const actionCell = document.createElement("td");
       const removeBtn = document.createElement("button");
       removeBtn.className = "remove-btn";
-      removeBtn.innerHTML = "🗑️";
+      const trashIcon = document.createElement("img");
+      trashIcon.src =
+        "https://unpkg.com/lucide-static@latest/icons/trash-2.svg";
+      trashIcon.className = "icon";
+      trashIcon.alt = "Remove";
+      removeBtn.appendChild(trashIcon);
       removeBtn.onclick = () => this.removeParam(index);
       actionCell.appendChild(removeBtn);
       row.appendChild(actionCell);
