@@ -34,4 +34,23 @@ module.exports = {
       patterns: [{ from: "public", to: "." }],
     }),
   ],
+  devServer: {
+    static: {
+      directory: path.join(__dirname, "dist"),
+    },
+    hot: true,
+    port: 3000,
+    open: {
+      app: { name: "chrome" },
+    },
+    devMiddleware: {
+      writeToDisk: true,
+    },
+    watchFiles: {
+      paths: ["src/**/*", "public/**/*"],
+      options: {
+        usePolling: false,
+      },
+    },
+  },
 };

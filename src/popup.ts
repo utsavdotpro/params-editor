@@ -173,15 +173,20 @@ const createTextInput = (
   return textInput;
 };
 
+const createIcon = (iconName: string, alt: string): HTMLImageElement => {
+  const icon = document.createElement("img");
+  icon.src = `https://unpkg.com/lucide-static@latest/icons/${iconName}.svg`;
+  icon.className = "w-5 h-5 align-text-bottom stroke-current fill-none";
+  icon.alt = alt;
+  return icon;
+};
+
 const createRemoveButton = (onClick: () => void): HTMLButtonElement => {
   const removeBtn = document.createElement("button");
   removeBtn.className =
     "bg-transparent border-0 text-red-500 cursor-pointer p-1 hover:text-red-700";
 
-  const trashIcon = document.createElement("img");
-  trashIcon.src = "https://unpkg.com/lucide-static@latest/icons/trash-2.svg";
-  trashIcon.className = "w-5 h-5 align-text-bottom stroke-current fill-none";
-  trashIcon.alt = "Remove";
+  const trashIcon = createIcon("trash-2", "Remove");
 
   removeBtn.appendChild(trashIcon);
   removeBtn.onclick = onClick;

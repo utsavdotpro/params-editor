@@ -5,28 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Query Param Editor</title>
   </head>
-  <body class="w-[500px] p-2 font-sans flex flex-col h-screen m-0">
+  <body class="w-[500px] p-3 font-sans flex flex-col h-screen m-0">
     <div class="flex flex-col flex-1 gap-4 relative">
       <div
         class="sticky top-0 bg-white z-10 flex flex-col gap-2 pb-2 border-b border-gray-200"
       >
         <div class="flex justify-between items-start gap-2 relative">
-          <div class="h-12 bg-gray-100 rounded overflow-hidden">
+          <div class="h-12 bg-gray-100 rounded-md overflow-hidden">
             <div
               id="urlDisplay"
-              class="p-2 break-all max-h-12 transition-all duration-300 relative flex-1 rounded bg-gray-100 hover:max-h-none hover:absolute hover:inset-x-0 hover:top-0 hover:shadow-md hover:z-20"
+              class="p-2 break-all max-h-12 transition-all duration-300 relative flex-1 rounded-md bg-gray-100 hover:max-h-none hover:absolute hover:inset-x-0 hover:top-0 hover:shadow-md hover:z-20 text-xs"
             ></div>
           </div>
-          <button
+
+          <img
             id="refreshBtn"
-            class="bg-gray-100 text-gray-800 p-2 px-4 rounded font-medium hover:bg-gray-200"
-          >
-            <img
-              src="https://unpkg.com/lucide-static@latest/icons/refresh-cw.svg"
-              class="w-5 h-5 align-text-bottom stroke-current fill-none mr-1 inline"
-              alt="Refresh"
-            />
-          </button>
+            src="https://unpkg.com/lucide-static@latest/icons/refresh-cw.svg"
+            class="w-7 h-7 align-text-bottom stroke-current fill-none mr-1 inline bg-gray-100 text-gray-800 rounded font-medium hover:bg-gray-200 p-1 cursor-pointer"
+            alt="Refresh"
+          />
         </div>
       </div>
 
