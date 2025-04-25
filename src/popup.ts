@@ -1,5 +1,7 @@
 /// <reference types="chrome"/>
 
+import "./global.css";
+
 interface Param {
   key: string;
   value: string;
