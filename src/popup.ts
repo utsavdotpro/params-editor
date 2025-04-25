@@ -236,14 +236,10 @@ class ParamsEditor {
     console.log("Loading current URL");
     try {
       // Get current URL from background script
-      // const response = await chrome.runtime.sendMessage({
-      //   type: "GET_CURRENT_URL",
-      // });
-      // console.log("Received URL response:", response);
-
-      const response = {
-        url: "https://www.google.com/search?q=level&sca_esv=4a60b909f51ea567&sxsrf=AHTn8zp5jJFmOFsL8HNVwcav8d1SYrBzNw%3A1745602323077&ei=E8cLaM3ABNXG0-kPpYfouAM&ved=0ahUKEwiNlouz2_OMAxVV4zQHHaUDGjcQ4dUDCBA&uact=5&oq=level&gs_lp=Egxnd3Mtd2l6LXNlcnAiBWxldmVsMgsQABiABBiRAhiKBTIQEAAYgAQYsQMYQxjJAxiKBTIKEAAYgAQYQxiKBTIKEAAYgAQYQxiKBTIOEC4YgAQYxwEYjgUYrwEyCxAAGIAEGJIDGIoFMgUQABiABDIFEC4YgAQyCxAAGIAEGLEDGIMBMgsQLhiABBjRAxjHAUilD1AAWMQNcAJ4AZABAJgBlwGgAcQFqgEDNS4yuAEDyAEA-AEBmAIJoAL7BcICChAjGIAEGCcYigXCAhEQLhiABBixAxjRAxiDARjHAcICCBAuGIAEGLEDwgIIEAAYgAQYsQPCAg4QABiABBixAxiDARiKBcICCxAuGIAEGLEDGIMBwgINEAAYgAQYsQMYQxiKBcICDRAuGIAEGLEDGEMYigXCAhcQLhiABBixAxiDARjHARiKBRiOBRivAcICERAuGIAEGLEDGNEDGMcBGIoFwgIOEC4YgAQYsQMY0QMYxwHCAhYQLhiABBixAxjRAxhDGMcBGMkDGIoFmAMAkgcDNS40oAeRcLIHAzMuNLgH8AU&sclient=gws-wiz-serp&test=true&yes=true",
-      };
+      const response = await chrome.runtime.sendMessage({
+        type: "GET_CURRENT_URL",
+      });
+      console.log("Received URL response:", response);
       if (response?.url) {
         this.originalUrl = response.url;
         this.updateUrlDisplay();
@@ -259,7 +255,55 @@ class ParamsEditor {
   private updateUrlDisplay() {
     const urlDisplay = document.getElementById("urlDisplay");
     if (urlDisplay) {
-      urlDisplay.textContent = this.originalUrl;
+      try {
+        const url = new URL(this.originalUrl);
+        const baseUrl = `${url.origin}${url.pathname}`;
+
+        // Clear previous content
+        urlDisplay.innerHTML = "";
+
+        // Add the base URL
+        const baseUrlSpan = document.createElement("span");
+        baseUrlSpan.textContent = baseUrl;
+        urlDisplay.appendChild(baseUrlSpan);
+
+        // Add the query parameters with colored keys
+        if (url.search) {
+          const searchParts = url.search.substring(1).split("&");
+
+          if (searchParts.length > 0) {
+            urlDisplay.appendChild(document.createTextNode("?"));
+
+            searchParts.forEach((part, index) => {
+              if (index > 0) {
+                urlDisplay.appendChild(document.createTextNode("&"));
+              }
+
+              const [key, value] = part.split("=");
+
+              // Add key with color
+              const keySpan = document.createElement("span");
+              keySpan.textContent = key;
+              keySpan.className = "text-green-600 font-medium";
+              urlDisplay.appendChild(keySpan);
+
+              // Add equals sign and value
+              if (value !== undefined) {
+                urlDisplay.appendChild(document.createTextNode("="));
+                urlDisplay.appendChild(document.createTextNode(value));
+              }
+            });
+          }
+        }
+
+        // Add hash if present
+        if (url.hash) {
+          urlDisplay.appendChild(document.createTextNode(url.hash));
+        }
+      } catch (error) {
+        // Fallback to plain text if URL parsing fails
+        urlDisplay.textContent = this.originalUrl;
+      }
     }
   }
 
