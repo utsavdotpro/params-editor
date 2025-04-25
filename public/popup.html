@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Query Param Editor</title>
   </head>
-  <body class="w-[500px] p-3 font-sans flex flex-col h-screen m-0">
-    <div class="flex flex-col flex-1 gap-4 relative">
+  <body class="w-[500px] p-3 pt-0 font-sans flex flex-col h-screen m-0">
+    <div class="flex flex-col flex-1 gap-2 relative">
       <div
-        class="sticky top-0 bg-white z-10 flex flex-col gap-2 pb-2 border-b border-gray-200"
+        class="sticky top-0 bg-white z-10 flex flex-col gap-2 py-3 border-b border-gray-200"
       >
         <div class="flex justify-between items-start gap-2 relative">
           <div class="h-12 bg-gray-100 rounded-md overflow-hidden">
@@ -27,13 +27,13 @@
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto">
-        <table class="w-full border-collapse flex-1" id="paramsTable">
+      <div class="overflow-y-auto">
+        <table class="w-full border-collapse flex-1 text-sm" id="paramsTable">
           <thead>
             <tr>
-              <th class="p-2 text-left">Key</th>
-              <th class="p-2 text-left">Value</th>
-              <th class="p-2 text-left"></th>
+              <th class="p-1 text-left">Key</th>
+              <th class="p-1 text-left">Value</th>
+              <th class="p-1 text-left"></th>
             </tr>
           </thead>
           <tbody id="paramsBody">
@@ -46,50 +46,54 @@
         class="flex gap-2 sticky bottom-0 bg-white py-3 z-10 border-t border-gray-200"
       >
         <div class="flex-1">
-          <div class="flex gap-2">
+          <div class="flex gap-2 text-sm">
             <input
               type="text"
-              class="w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500"
+              class="flex-1 p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500"
               id="newParamKey"
               placeholder="Key"
             />
+
             <input
               type="text"
-              class="w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500"
+              class="flex-1 p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500"
               id="newParamValue"
               placeholder="Value"
             />
+
             <button
-              class="flex items-center bg-green-500 text-white p-2 px-4 rounded font-medium hover:bg-green-600"
+              class="flex flex-none items-center border border-black text-black py-1 px-3.5 rounded font-sm"
               id="addParamBtn"
             >
               <img
                 src="https://unpkg.com/lucide-static@latest/icons/plus.svg"
-                class="w-5 h-5 align-text-bottom stroke-current fill-none mr-1"
+                class="w-4 h-4 me-1"
                 alt="Add"
               />
               Add
             </button>
           </div>
-          <div class="flex gap-2 justify-end pt-2">
+
+          <div class="flex font-semibold gap-2 mt-3">
             <button
-              class="flex items-center bg-green-500 text-white p-2 px-4 rounded font-medium hover:bg-green-600"
+              class="flex items-center bg-green-500 text-white py-2 px-4 rounded font-sm hover:bg-green-600"
               id="applyBtn"
             >
               <img
                 src="https://unpkg.com/lucide-static@latest/icons/check.svg"
-                class="w-5 h-5 align-text-bottom stroke-current fill-none mr-1"
+                class="w-4 h-4 me-1"
                 alt="Apply"
               />
               Apply
             </button>
+
             <button
-              class="bg-gray-100 text-gray-800 p-2 px-4 rounded font-medium hover:bg-gray-200"
+              class="flex items-center bg-gray-100 text-gray-800 py-2 px-4 rounded font-sm hover:bg-gray-200"
               id="resetBtn"
             >
               <img
                 src="https://unpkg.com/lucide-static@latest/icons/undo.svg"
-                class="w-5 h-5 align-text-bottom stroke-current fill-none mr-1"
+                class="w-4 h-4 me-1"
                 alt="Reset"
               />
               Reset

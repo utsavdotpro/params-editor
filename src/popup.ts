@@ -24,14 +24,19 @@ interface ValueInputProps {
 }
 
 // Reusable functional components with Tailwind CSS classes
+const createCell = (className: string = ""): HTMLTableCellElement => {
+  const cell = document.createElement("td");
+  cell.className = `p-1 text-left ${className}`;
+  return cell;
+};
+
 const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   const { param, index, onKeyChange, onValueChange, onRemove } = props;
   const row = document.createElement("tr");
-  row.className = "border-b border-gray-200";
+  // row.className = "border-b border-gray-200";
 
   // Key cell
-  const keyCell = document.createElement("td");
-  keyCell.className = "p-2 text-left";
+  const keyCell = createCell();
   const keyInput = document.createElement("input");
   keyInput.type = "text";
   keyInput.className =
@@ -43,14 +48,12 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   row.appendChild(keyCell);
 
   // Value cell
-  const valueCell = document.createElement("td");
-  valueCell.className = "p-2 text-left";
+  const valueCell = createCell();
   valueCell.appendChild(createValueInput({ param, index, onValueChange }));
   row.appendChild(valueCell);
 
   // Action cell
-  const actionCell = document.createElement("td");
-  actionCell.className = "p-2 text-left";
+  const actionCell = createCell("!py-0");
   actionCell.appendChild(createRemoveButton(() => onRemove(index)));
   row.appendChild(actionCell);
 
@@ -176,15 +179,14 @@ const createTextInput = (
 const createIcon = (iconName: string, alt: string): HTMLImageElement => {
   const icon = document.createElement("img");
   icon.src = `https://unpkg.com/lucide-static@latest/icons/${iconName}.svg`;
-  icon.className = "w-5 h-5 align-text-bottom stroke-current fill-none";
+  icon.className = "w-4 h-4 align-text-bottom stroke-current fill-none";
   icon.alt = alt;
   return icon;
 };
 
 const createRemoveButton = (onClick: () => void): HTMLButtonElement => {
   const removeBtn = document.createElement("button");
-  removeBtn.className =
-    "bg-transparent border-0 text-red-500 cursor-pointer p-1 hover:text-red-700";
+  removeBtn.className = "cursor-pointer inline-block align-middle";
 
   const trashIcon = createIcon("trash-2", "Remove");
 
@@ -234,10 +236,14 @@ class ParamsEditor {
     console.log("Loading current URL");
     try {
       // Get current URL from background script
-      const response = await chrome.runtime.sendMessage({
-        type: "GET_CURRENT_URL",
-      });
-      console.log("Received URL response:", response);
+      // const response = await chrome.runtime.sendMessage({
+      //   type: "GET_CURRENT_URL",
+      // });
+      // console.log("Received URL response:", response);
+
+      const response = {
+        url: "https://www.google.com/search?q=level&sca_esv=4a60b909f51ea567&sxsrf=AHTn8zp5jJFmOFsL8HNVwcav8d1SYrBzNw%3A1745602323077&ei=E8cLaM3ABNXG0-kPpYfouAM&ved=0ahUKEwiNlouz2_OMAxVV4zQHHaUDGjcQ4dUDCBA&uact=5&oq=level&gs_lp=Egxnd3Mtd2l6LXNlcnAiBWxldmVsMgsQABiABBiRAhiKBTIQEAAYgAQYsQMYQxjJAxiKBTIKEAAYgAQYQxiKBTIKEAAYgAQYQxiKBTIOEC4YgAQYxwEYjgUYrwEyCxAAGIAEGJIDGIoFMgUQABiABDIFEC4YgAQyCxAAGIAEGLEDGIMBMgsQLhiABBjRAxjHAUilD1AAWMQNcAJ4AZABAJgBlwGgAcQFqgEDNS4yuAEDyAEA-AEBmAIJoAL7BcICChAjGIAEGCcYigXCAhEQLhiABBixAxjRAxiDARjHAcICCBAuGIAEGLEDwgIIEAAYgAQYsQPCAg4QABiABBixAxiDARiKBcICCxAuGIAEGLEDGIMBwgINEAAYgAQYsQMYQxiKBcICDRAuGIAEGLEDGEMYigXCAhcQLhiABBixAxiDARjHARiKBRiOBRivAcICERAuGIAEGLEDGNEDGMcBGIoFwgIOEC4YgAQYsQMY0QMYxwHCAhYQLhiABBixAxjRAxhDGMcBGMkDGIoFmAMAkgcDNS40oAeRcLIHAzMuNLgH8AU&sclient=gws-wiz-serp&test=true&yes=true",
+      };
       if (response?.url) {
         this.originalUrl = response.url;
         this.updateUrlDisplay();
@@ -413,7 +419,14 @@ class ParamsEditor {
     if (refreshBtn) {
       refreshBtn.addEventListener("click", () => {
         console.log("Refresh button clicked");
+
+        // First reload the current URL from the tab
         this.loadCurrentUrl();
+
+        // Also refresh the actual tab
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0]?.id) chrome.tabs.reload(tabs[0].id);
+        });
       });
     }
 
