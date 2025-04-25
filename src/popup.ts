@@ -8,6 +8,187 @@ interface Param {
   type: "string" | "number" | "date" | "boolean";
 }
 
+// Reusable component interfaces
+interface ParamRowProps {
+  param: Param;
+  index: number;
+  onKeyChange: (index: number, key: string) => void;
+  onValueChange: (index: number, value: string) => void;
+  onRemove: (index: number) => void;
+}
+
+interface ValueInputProps {
+  param: Param;
+  index: number;
+  onValueChange: (index: number, value: string) => void;
+}
+
+// Reusable functional components with Tailwind CSS classes
+const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
+  const { param, index, onKeyChange, onValueChange, onRemove } = props;
+  const row = document.createElement("tr");
+  row.className = "border-b border-gray-200";
+
+  // Key cell
+  const keyCell = document.createElement("td");
+  keyCell.className = "p-2 text-left";
+  const keyInput = document.createElement("input");
+  keyInput.type = "text";
+  keyInput.className =
+    "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
+  keyInput.value = param.key;
+  keyInput.onchange = (e) =>
+    onKeyChange(index, (e.target as HTMLInputElement).value);
+  keyCell.appendChild(keyInput);
+  row.appendChild(keyCell);
+
+  // Value cell
+  const valueCell = document.createElement("td");
+  valueCell.className = "p-2 text-left";
+  valueCell.appendChild(createValueInput({ param, index, onValueChange }));
+  row.appendChild(valueCell);
+
+  // Action cell
+  const actionCell = document.createElement("td");
+  actionCell.className = "p-2 text-left";
+  actionCell.appendChild(createRemoveButton(() => onRemove(index)));
+  row.appendChild(actionCell);
+
+  return row;
+};
+
+const createValueInput = (props: ValueInputProps): HTMLElement => {
+  const { param, index, onValueChange } = props;
+  const container = document.createElement("div");
+  container.className = "w-full";
+
+  switch (param.type) {
+    case "boolean":
+      container.appendChild(
+        createBooleanInput(param.value, (value) => onValueChange(index, value))
+      );
+      break;
+
+    case "number":
+      container.appendChild(
+        createNumberInput(param.value, (value) => onValueChange(index, value))
+      );
+      break;
+
+    case "date":
+      container.appendChild(
+        createDateInput(param.value, (value) => onValueChange(index, value))
+      );
+      break;
+
+    default:
+      container.appendChild(
+        createTextInput(param.value, (value) => onValueChange(index, value))
+      );
+  }
+
+  return container;
+};
+
+const createBooleanInput = (
+  value: string,
+  onChange: (value: string) => void
+): HTMLElement => {
+  const toggleContainer = document.createElement("label");
+  toggleContainer.className = "relative inline-block w-[50px] h-6";
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.className = "opacity-0 w-0 h-0";
+  checkbox.checked = value.toLowerCase() === "true";
+  checkbox.onchange = (e) =>
+    onChange((e.target as HTMLInputElement).checked.toString());
+
+  const slider = document.createElement("span");
+  slider.className =
+    "absolute cursor-pointer inset-0 bg-gray-400 transition-all rounded-full before:absolute before:content-[''] before:h-4 before:w-4 before:left-1 before:bottom-1 before:bg-white before:transition-all before:rounded-full";
+
+  // Set initial state based on value
+  if (checkbox.checked) {
+    slider.classList.add("bg-green-500");
+    slider.classList.add("before:translate-x-[26px]");
+  }
+
+  toggleContainer.appendChild(checkbox);
+  toggleContainer.appendChild(slider);
+
+  // Add custom styling for checked state on change
+  checkbox.addEventListener("change", () => {
+    if (checkbox.checked) {
+      slider.classList.add("bg-green-500");
+      slider.classList.add("before:translate-x-[26px]");
+    } else {
+      slider.classList.remove("bg-green-500");
+      slider.classList.remove("before:translate-x-[26px]");
+    }
+  });
+
+  return toggleContainer;
+};
+
+const createNumberInput = (
+  value: string,
+  onChange: (value: string) => void
+): HTMLInputElement => {
+  const numberInput = document.createElement("input");
+  numberInput.type = "number";
+  numberInput.className =
+    "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
+  numberInput.value = value;
+  numberInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
+
+  return numberInput;
+};
+
+const createDateInput = (
+  value: string,
+  onChange: (value: string) => void
+): HTMLInputElement => {
+  const dateInput = document.createElement("input");
+  dateInput.type = "date";
+  dateInput.className =
+    "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
+  dateInput.value = value;
+  dateInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
+
+  return dateInput;
+};
+
+const createTextInput = (
+  value: string,
+  onChange: (value: string) => void
+): HTMLInputElement => {
+  const textInput = document.createElement("input");
+  textInput.type = "text";
+  textInput.className =
+    "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
+  textInput.value = value;
+  textInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
+
+  return textInput;
+};
+
+const createRemoveButton = (onClick: () => void): HTMLButtonElement => {
+  const removeBtn = document.createElement("button");
+  removeBtn.className =
+    "bg-transparent border-0 text-red-500 cursor-pointer p-1 hover:text-red-700";
+
+  const trashIcon = document.createElement("img");
+  trashIcon.src = "https://unpkg.com/lucide-static@latest/icons/trash-2.svg";
+  trashIcon.className = "w-5 h-5 align-text-bottom stroke-current fill-none";
+  trashIcon.alt = "Remove";
+
+  removeBtn.appendChild(trashIcon);
+  removeBtn.onclick = onClick;
+
+  return removeBtn;
+};
+
 class ParamsEditor {
   private originalUrl: string = "";
   private currentParams: Param[] = [];
@@ -117,95 +298,15 @@ class ParamsEditor {
 
     paramsBody.innerHTML = "";
     this.currentParams.forEach((param, index) => {
-      const row = document.createElement("tr");
-
-      // Key cell
-      const keyCell = document.createElement("td");
-      const keyInput = document.createElement("input");
-      keyInput.type = "text";
-      keyInput.className = "param-input";
-      keyInput.value = param.key;
-      keyInput.onchange = (e) =>
-        this.updateParamKey(index, (e.target as HTMLInputElement).value);
-      keyCell.appendChild(keyInput);
-      row.appendChild(keyCell);
-
-      // Value cell
-      const valueCell = document.createElement("td");
-      valueCell.appendChild(this.createValueInput(param, index));
-      row.appendChild(valueCell);
-
-      // Action cell
-      const actionCell = document.createElement("td");
-      const removeBtn = document.createElement("button");
-      removeBtn.className = "remove-btn";
-      const trashIcon = document.createElement("img");
-      trashIcon.src =
-        "https://unpkg.com/lucide-static@latest/icons/trash-2.svg";
-      trashIcon.className = "icon";
-      trashIcon.alt = "Remove";
-      removeBtn.appendChild(trashIcon);
-      removeBtn.onclick = () => this.removeParam(index);
-      actionCell.appendChild(removeBtn);
-      row.appendChild(actionCell);
-
+      const row = createParamRow({
+        param,
+        index,
+        onKeyChange: this.updateParamKey.bind(this),
+        onValueChange: this.updateParamValue.bind(this),
+        onRemove: this.removeParam.bind(this),
+      });
       paramsBody.appendChild(row);
     });
-  }
-
-  private createValueInput(param: Param, index: number): HTMLElement {
-    const container = document.createElement("div");
-
-    switch (param.type) {
-      case "boolean":
-        const toggleContainer = document.createElement("label");
-        toggleContainer.className = "toggle-switch";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = param.value.toLowerCase() === "true";
-        checkbox.onchange = (e) =>
-          this.updateParamValue(
-            index,
-            (e.target as HTMLInputElement).checked.toString()
-          );
-        const slider = document.createElement("span");
-        slider.className = "toggle-slider";
-        toggleContainer.appendChild(checkbox);
-        toggleContainer.appendChild(slider);
-        container.appendChild(toggleContainer);
-        break;
-
-      case "number":
-        const numberInput = document.createElement("input");
-        numberInput.type = "number";
-        numberInput.className = "param-input";
-        numberInput.value = param.value;
-        numberInput.onchange = (e) =>
-          this.updateParamValue(index, (e.target as HTMLInputElement).value);
-        container.appendChild(numberInput);
-        break;
-
-      case "date":
-        const dateInput = document.createElement("input");
-        dateInput.type = "date";
-        dateInput.className = "param-input";
-        dateInput.value = param.value;
-        dateInput.onchange = (e) =>
-          this.updateParamValue(index, (e.target as HTMLInputElement).value);
-        container.appendChild(dateInput);
-        break;
-
-      default:
-        const textInput = document.createElement("input");
-        textInput.type = "text";
-        textInput.className = "param-input";
-        textInput.value = param.value;
-        textInput.onchange = (e) =>
-          this.updateParamValue(index, (e.target as HTMLInputElement).value);
-        container.appendChild(textInput);
-    }
-
-    return container;
   }
 
   private updateParamValue(index: number, value: string) {
