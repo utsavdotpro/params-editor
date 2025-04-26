@@ -156,7 +156,22 @@ const createDateInput = (
   dateInput.type = "date";
   dateInput.className =
     "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
-  dateInput.value = value;
+
+  // Format the date value to YYYY-MM-DD for HTML date input
+  try {
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      dateInput.value = `${year}-${month}-${day}`;
+    } else {
+      dateInput.value = value;
+    }
+  } catch (e) {
+    dateInput.value = value;
+  }
+
   dateInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
 
   return dateInput;
