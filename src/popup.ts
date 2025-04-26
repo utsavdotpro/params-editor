@@ -5,7 +5,7 @@ import "./global.css";
 interface Param {
   key: string;
   value: string;
-  type: "string" | "number" | "date" | "boolean";
+  type: "string" | "number" | "date" | "boolean" | "list";
 }
 
 // Reusable component interfaces
@@ -40,7 +40,7 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   const keyInput = document.createElement("input");
   keyInput.type = "text";
   keyInput.className =
-    "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
+    "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500 min-w-28";
   keyInput.value = param.key;
   keyInput.onchange = (e) =>
     onKeyChange(index, (e.target as HTMLInputElement).value);
@@ -53,7 +53,7 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   row.appendChild(valueCell);
 
   // Action cell
-  const actionCell = createCell("!py-0");
+  const actionCell = createCell("!py-0 w-5");
   actionCell.appendChild(createRemoveButton(() => onRemove(index)));
   row.appendChild(actionCell);
 
@@ -81,6 +81,12 @@ const createValueInput = (props: ValueInputProps): HTMLElement => {
     case "date":
       container.appendChild(
         createDateInput(param.value, (value) => onValueChange(index, value))
+      );
+      break;
+
+    case "list":
+      container.appendChild(
+        createListInput(param.value, (value) => onValueChange(index, value))
       );
       break;
 
@@ -189,6 +195,171 @@ const createTextInput = (
   textInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
 
   return textInput;
+};
+
+const createListInput = (
+  value: string,
+  onChange: (value: string) => void
+): HTMLElement => {
+  const container = document.createElement("div");
+  container.className = "w-full relative";
+
+  // Create a custom multi-select component
+  const multiSelectContainer = document.createElement("div");
+  multiSelectContainer.className =
+    "w-full border border-gray-300 rounded focus-within:border-green-500 overflow-hidden";
+
+  // Input container holds selected items and input field
+  const inputContainer = document.createElement("div");
+  inputContainer.className = "flex flex-wrap p-1.5 min-h-[38px] gap-1";
+
+  // Parse the comma-separated value into an array
+  const selectedValues = value
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v);
+  const allSelectedValues = [...selectedValues];
+
+  // Function to render all selected items
+  const renderSelectedItems = () => {
+    // Clear previous items
+    const existingItems = inputContainer.querySelectorAll(".selected-item");
+    existingItems.forEach((item) => item.remove());
+
+    // Add selected items before the input
+    allSelectedValues.forEach((itemValue, itemIndex) => {
+      if (!itemValue) return;
+
+      const itemChip = document.createElement("div");
+      itemChip.className =
+        "selected-item bg-green-100 text-green-800 rounded px-2 py-0.5 text-xs flex items-center";
+
+      const itemText = document.createElement("span");
+      itemText.textContent = itemValue;
+      itemText.className = "cursor-pointer";
+
+      // Add edit functionality
+      itemText.onclick = (e) => {
+        e.stopPropagation();
+
+        // Create edit input to replace the chip
+        const editInput = document.createElement("input");
+        editInput.type = "text";
+        editInput.className =
+          "outline-none border-none bg-green-50 text-xs py-0.5 w-full";
+        editInput.value = itemValue;
+        editInput.style.minWidth = "20px";
+        editInput.style.width = itemValue.length * 8 + "px"; // Approximate width based on content
+
+        // Handle saving edits
+        const saveEdit = () => {
+          const newValue = editInput.value.trim();
+          if (newValue && newValue !== itemValue) {
+            // Update the value in our array
+            allSelectedValues[itemIndex] = newValue;
+            renderSelectedItems();
+            onChange(
+              allSelectedValues.join(",") + (value.endsWith(",") ? "," : "")
+            );
+          } else if (!newValue) {
+            // Remove item if edited to empty
+            allSelectedValues.splice(itemIndex, 1);
+            renderSelectedItems();
+            onChange(
+              allSelectedValues.join(",") + (value.endsWith(",") ? "," : "")
+            );
+          } else {
+            // Value unchanged, just re-render
+            renderSelectedItems();
+          }
+        };
+
+        // Save on enter or blur
+        editInput.onkeydown = (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            saveEdit();
+          } else if (e.key === "Escape") {
+            renderSelectedItems(); // Cancel edit
+          }
+        };
+        editInput.onblur = saveEdit;
+
+        // Replace the text with the input
+        itemChip.replaceChild(editInput, itemText);
+        setTimeout(() => {
+          editInput.focus();
+          editInput.select();
+        }, 0);
+      };
+
+      itemChip.appendChild(itemText);
+
+      // Add remove button
+      const removeBtn = document.createElement("span");
+      removeBtn.textContent = "×";
+      removeBtn.className = "ml-1 cursor-pointer text-red-700 font-semibold";
+      removeBtn.onclick = (e) => {
+        e.stopPropagation();
+        const index = allSelectedValues.indexOf(itemValue);
+        if (index !== -1) {
+          allSelectedValues.splice(index, 1);
+          renderSelectedItems();
+          onChange(
+            allSelectedValues.join(",") + (value.endsWith(",") ? "," : "")
+          );
+        }
+      };
+
+      itemChip.appendChild(removeBtn);
+      inputContainer.insertBefore(itemChip, inputField);
+    });
+  };
+
+  // Input field for new items
+  const inputField = document.createElement("input");
+  inputField.type = "text";
+  inputField.className = "outline-none border-none flex-grow min-w-[50px]";
+  inputField.placeholder = allSelectedValues.length ? "Add item..." : "";
+
+  // Handle adding new items
+  inputField.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      const newValue = inputField.value.trim();
+
+      if (newValue && !allSelectedValues.includes(newValue)) {
+        allSelectedValues.push(newValue);
+        inputField.value = "";
+        renderSelectedItems();
+        onChange(allSelectedValues.join(","));
+      }
+    } else if (
+      e.key === "Backspace" &&
+      inputField.value === "" &&
+      allSelectedValues.length > 0
+    ) {
+      // Remove the last item when backspace is pressed and input is empty
+      allSelectedValues.pop();
+      renderSelectedItems();
+      onChange(allSelectedValues.join(","));
+    }
+  });
+
+  // Focus the container when clicked
+  multiSelectContainer.addEventListener("click", () => {
+    inputField.focus();
+  });
+
+  // Add input field to container
+  inputContainer.appendChild(inputField);
+  multiSelectContainer.appendChild(inputContainer);
+
+  // Initial render of selected items
+  setTimeout(() => renderSelectedItems(), 0);
+
+  container.appendChild(multiSelectContainer);
+  return container;
 };
 
 const createIcon = (iconName: string, alt: string): HTMLImageElement => {
@@ -391,6 +562,28 @@ class ParamsEditor {
     // Date detection - try parsing with stricter validation
     if (this.isValidDate(value)) {
       return "date";
+    }
+
+    // List detection - check for comma-separated values, including trailing commas
+    if (value.includes(",")) {
+      // Skip detection for JSON-like structures (arrays, objects)
+      const hasJsonStructure =
+        // Check for JSON array pattern
+        (value.trim().startsWith("[") && value.trim().endsWith("]")) ||
+        // Check for JSON object pattern
+        (value.trim().startsWith("{") && value.trim().endsWith("}"));
+
+      if (!hasJsonStructure) {
+        // Handle trailing commas and still detect as list
+        const trimmedValue = value.endsWith(",") ? value.slice(0, -1) : value;
+        // Make sure we have actual values (not just commas)
+        const hasValues = trimmedValue
+          .split(",")
+          .some((item) => item.trim() !== "");
+        if (hasValues) {
+          return "list";
+        }
+      }
     }
 
     // Default to string for anything else
