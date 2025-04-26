@@ -35,25 +35,25 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   const row = document.createElement("tr");
   // row.className = "border-b border-gray-200";
 
-  // Key cell
-  const keyCell = createCell();
+  // Key cell - give it sufficient fixed width
+  const keyCell = createCell("w-[30%]");
   const keyInput = document.createElement("input");
   keyInput.type = "text";
   keyInput.className =
-    "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500 min-w-28";
+    "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
   keyInput.value = param.key;
   keyInput.onchange = (e) =>
     onKeyChange(index, (e.target as HTMLInputElement).value);
   keyCell.appendChild(keyInput);
   row.appendChild(keyCell);
 
-  // Value cell
-  const valueCell = createCell();
+  // Value cell - let it take remaining space but not push others out
+  const valueCell = createCell("w-[60%] overflow-hidden");
   valueCell.appendChild(createValueInput({ param, index, onValueChange }));
   row.appendChild(valueCell);
 
-  // Action cell
-  const actionCell = createCell("!py-0 w-5");
+  // Action cell - ensure fixed width
+  const actionCell = createCell("w-[10%] !py-0 text-center");
   actionCell.appendChild(createRemoveButton(() => onRemove(index)));
   row.appendChild(actionCell);
 
@@ -246,7 +246,7 @@ const createListInput = (
   // Preview container shows chips like before (read-only)
   const previewContainer = document.createElement("div");
   previewContainer.className =
-    "list-preview p-1.5 border border-gray-300 rounded cursor-pointer hover:border-green-500 bg-gray-50 min-h-[38px] flex flex-wrap items-center gap-1";
+    "list-preview p-1.5 border border-gray-300 rounded cursor-pointer hover:border-green-500 bg-gray-50 min-h-[38px] flex flex-wrap items-center gap-1 w-full overflow-hidden";
 
   // Function to update the preview display
   const updatePreview = (values: string[]) => {
@@ -547,10 +547,11 @@ const createJsonInput = (
 
   const previewContainer = document.createElement("div");
   previewContainer.className =
-    "json-preview p-1.5 border border-gray-300 rounded cursor-pointer hover:border-green-500 bg-gray-50 min-h-[38px] flex items-center justify-between";
+    "json-preview p-1.5 border border-gray-300 rounded cursor-pointer hover:border-green-500 bg-gray-50 min-h-[38px] flex items-center justify-between w-full overflow-hidden";
 
   const previewText = document.createElement("code");
-  previewText.className = "text-xs text-gray-600 truncate"; // Truncate long previews
+  previewText.className =
+    "text-xs text-gray-600 truncate block w-[90%] overflow-hidden text-ellipsis"; // Better overflow handling
   try {
     // Try to parse and prettify, fallback to raw value
     const parsed = JSON.parse(decodedValue);
@@ -992,6 +993,12 @@ class ParamsEditor {
     if (!paramsBody) {
       console.error("paramsBody element not found");
       return;
+    }
+
+    // Find the parent table and ensure it has proper layout
+    const paramsTable = paramsBody.closest("table");
+    if (paramsTable) {
+      paramsTable.className = "w-full table-fixed";
     }
 
     // Update params count
