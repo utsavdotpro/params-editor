@@ -91,7 +91,11 @@ const createValueInput = (props: ValueInputProps): HTMLElement => {
 
     case "list":
       container.appendChild(
-        createListInput(param.value, (value) => onValueChange(index, value))
+        createListInput(
+          param.value,
+          (value) => onValueChange(index, value),
+          param.key
+        )
       );
       break;
 
@@ -215,12 +219,98 @@ const createTextInput = (
 
 const createListInput = (
   value: string,
-  onChange: (value: string) => void
+  onChange: (value: string) => void,
+  paramKey: string
 ): HTMLElement => {
   const container = document.createElement("div");
   container.className = "w-full relative";
 
-  // Create a custom multi-select component
+  // Ensure we're working with decoded values
+  let decodedValue = value;
+  try {
+    if (value.includes("%")) {
+      decodedValue = decodeURIComponent(value);
+      console.log(`List Input - Decoded:`, decodedValue);
+    }
+  } catch (e) {
+    console.log(`List Input - Decoding failed:`, e);
+    decodedValue = value;
+  }
+
+  // Parse the comma-separated value into an array
+  const selectedValues = decodedValue
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v);
+
+  // Preview container shows chips like before (read-only)
+  const previewContainer = document.createElement("div");
+  previewContainer.className =
+    "list-preview p-1.5 border border-gray-300 rounded cursor-pointer hover:border-green-500 bg-gray-50 min-h-[38px] flex flex-wrap items-center gap-1";
+
+  // Function to update the preview display
+  const updatePreview = (values: string[]) => {
+    // Clear the preview
+    while (previewContainer.firstChild) {
+      previewContainer.removeChild(previewContainer.firstChild);
+    }
+
+    // Add chips for each value
+    values.forEach((itemValue) => {
+      if (!itemValue) return;
+
+      const itemChip = document.createElement("div");
+      itemChip.className =
+        "selected-item bg-green-100 text-green-800 rounded px-2 py-0.5 text-xs flex items-center";
+
+      const itemText = document.createElement("span");
+      itemText.textContent = itemValue;
+      itemChip.appendChild(itemText);
+
+      previewContainer.appendChild(itemChip);
+    });
+
+    // Add edit icon or placeholder text
+    if (values.length === 0) {
+      const placeholder = document.createElement("span");
+      placeholder.className = "text-gray-400 text-xs";
+      placeholder.textContent = "Click to edit list...";
+      previewContainer.appendChild(placeholder);
+    } else {
+      const editIcon = createIcon("pencil", "Edit List");
+      editIcon.className = "w-4 h-4 ml-auto text-gray-500 flex-shrink-0";
+      previewContainer.appendChild(editIcon);
+    }
+  };
+
+  // Initial preview update
+  updatePreview(selectedValues);
+  container.appendChild(previewContainer);
+
+  // Modal for editing
+  const modal = document.createElement("div");
+  modal.className =
+    "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden";
+  modal.onclick = (e) => {
+    // Close modal if backdrop is clicked
+    if (e.target === modal) {
+      modal.classList.add("hidden");
+    }
+  };
+
+  const modalContent = document.createElement("div");
+  modalContent.className =
+    "bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col";
+
+  const modalHeader = document.createElement("div");
+  modalHeader.className =
+    "p-3 border-b border-gray-200 text-lg font-semibold text-gray-700";
+  modalHeader.textContent = `Edit ${paramKey}`;
+
+  const modalBody = document.createElement("div");
+  modalBody.className = "p-4";
+
+  // Create the editable multiselect (the same as the original one)
   const multiSelectContainer = document.createElement("div");
   multiSelectContainer.className =
     "w-full border border-gray-300 rounded focus-within:border-green-500 overflow-hidden";
@@ -229,21 +319,17 @@ const createListInput = (
   const inputContainer = document.createElement("div");
   inputContainer.className = "flex flex-wrap p-1.5 min-h-[38px] gap-1";
 
-  // Parse the comma-separated value into an array
-  const selectedValues = value
-    .split(",")
-    .map((v) => v.trim())
-    .filter((v) => v);
-  const allSelectedValues = [...selectedValues];
+  // Copy the array for editing
+  const editingValues = [...selectedValues];
 
-  // Function to render all selected items
+  // Function to render all selected items in the editor
   const renderSelectedItems = () => {
     // Clear previous items
     const existingItems = inputContainer.querySelectorAll(".selected-item");
     existingItems.forEach((item) => item.remove());
 
     // Add selected items before the input
-    allSelectedValues.forEach((itemValue, itemIndex) => {
+    editingValues.forEach((itemValue, itemIndex) => {
       if (!itemValue) return;
 
       const itemChip = document.createElement("div");
@@ -272,18 +358,12 @@ const createListInput = (
           const newValue = editInput.value.trim();
           if (newValue && newValue !== itemValue) {
             // Update the value in our array
-            allSelectedValues[itemIndex] = newValue;
+            editingValues[itemIndex] = newValue;
             renderSelectedItems();
-            onChange(
-              allSelectedValues.join(",") + (value.endsWith(",") ? "," : "")
-            );
           } else if (!newValue) {
             // Remove item if edited to empty
-            allSelectedValues.splice(itemIndex, 1);
+            editingValues.splice(itemIndex, 1);
             renderSelectedItems();
-            onChange(
-              allSelectedValues.join(",") + (value.endsWith(",") ? "," : "")
-            );
           } else {
             // Value unchanged, just re-render
             renderSelectedItems();
@@ -317,13 +397,10 @@ const createListInput = (
       removeBtn.className = "ml-1 cursor-pointer text-red-700 font-semibold";
       removeBtn.onclick = (e) => {
         e.stopPropagation();
-        const index = allSelectedValues.indexOf(itemValue);
+        const index = editingValues.indexOf(itemValue);
         if (index !== -1) {
-          allSelectedValues.splice(index, 1);
+          editingValues.splice(index, 1);
           renderSelectedItems();
-          onChange(
-            allSelectedValues.join(",") + (value.endsWith(",") ? "," : "")
-          );
         }
       };
 
@@ -336,7 +413,7 @@ const createListInput = (
   const inputField = document.createElement("input");
   inputField.type = "text";
   inputField.className = "outline-none border-none flex-grow min-w-[50px]";
-  inputField.placeholder = allSelectedValues.length ? "Add item..." : "";
+  inputField.placeholder = "Add item...";
 
   // Handle adding new items
   inputField.addEventListener("keydown", (e) => {
@@ -344,21 +421,19 @@ const createListInput = (
       e.preventDefault();
       const newValue = inputField.value.trim();
 
-      if (newValue && !allSelectedValues.includes(newValue)) {
-        allSelectedValues.push(newValue);
+      if (newValue && !editingValues.includes(newValue)) {
+        editingValues.push(newValue);
         inputField.value = "";
         renderSelectedItems();
-        onChange(allSelectedValues.join(","));
       }
     } else if (
       e.key === "Backspace" &&
       inputField.value === "" &&
-      allSelectedValues.length > 0
+      editingValues.length > 0
     ) {
       // Remove the last item when backspace is pressed and input is empty
-      allSelectedValues.pop();
+      editingValues.pop();
       renderSelectedItems();
-      onChange(allSelectedValues.join(","));
     }
   });
 
@@ -371,10 +446,81 @@ const createListInput = (
   inputContainer.appendChild(inputField);
   multiSelectContainer.appendChild(inputContainer);
 
-  // Initial render of selected items
-  setTimeout(() => renderSelectedItems(), 0);
+  modalBody.appendChild(multiSelectContainer);
 
-  container.appendChild(multiSelectContainer);
+  const modalFooter = document.createElement("div");
+  modalFooter.className = "p-3 border-t border-gray-200 flex justify-end gap-2";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.textContent = "Cancel";
+  cancelButton.className =
+    "px-4 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300";
+  cancelButton.onclick = () => {
+    modal.classList.add("hidden");
+    // Reset the editing values on cancel
+    editingValues.length = 0;
+    selectedValues.forEach((v) => editingValues.push(v));
+  };
+
+  const saveButton = document.createElement("button");
+  saveButton.textContent = "Save";
+  saveButton.className =
+    "px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700";
+  saveButton.onclick = () => {
+    // Join the values and save
+    const newListValue = editingValues.join(",");
+    onChange(newListValue);
+
+    // Update the preview
+    updatePreview(editingValues);
+
+    modal.classList.add("hidden");
+  };
+
+  modalFooter.appendChild(cancelButton);
+  modalFooter.appendChild(saveButton);
+
+  modalContent.appendChild(modalHeader);
+  modalContent.appendChild(modalBody);
+  modalContent.appendChild(modalFooter);
+  modal.appendChild(modalContent);
+
+  // Add modal to the body, but keep it hidden initially
+  document.body.appendChild(modal);
+
+  // Show modal when preview is clicked
+  previewContainer.onclick = () => {
+    // Reset the editing values
+    editingValues.length = 0;
+    selectedValues.forEach((v) => editingValues.push(v));
+
+    // Render the items
+    setTimeout(() => renderSelectedItems(), 0);
+
+    modal.classList.remove("hidden");
+    inputField.focus();
+  };
+
+  // Cleanup modal when container is removed
+  const observer = new MutationObserver((mutationsList, obs) => {
+    for (const mutation of mutationsList) {
+      if (mutation.removedNodes) {
+        mutation.removedNodes.forEach((node) => {
+          if (node === container) {
+            modal.remove();
+            obs.disconnect();
+            return;
+          }
+        });
+      }
+    }
+  });
+
+  observer.observe(container.parentNode || document.body, {
+    childList: true,
+    subtree: true,
+  });
+
   return container;
 };
 
@@ -420,7 +566,7 @@ const createJsonInput = (
   }
   previewContainer.appendChild(previewText);
 
-  const editIcon = createIcon("edit-3", "Edit JSON");
+  const editIcon = createIcon("pencil", "Edit JSON");
   editIcon.className = "w-4 h-4 ml-2 text-gray-500 flex-shrink-0";
   previewContainer.appendChild(editIcon);
 
