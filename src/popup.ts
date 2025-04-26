@@ -351,6 +351,7 @@ class ParamsEditor {
       });
 
       this.renderParams();
+      this.updateParamsCount();
     } catch (error) {
       console.error("Error parsing URL parameters:", error);
     }
@@ -392,6 +393,9 @@ class ParamsEditor {
       console.error("paramsBody element not found");
       return;
     }
+
+    // Update params count
+    this.updateParamsCount();
 
     // Clear the current table body
     paramsBody.innerHTML = "";
@@ -442,6 +446,13 @@ class ParamsEditor {
     if (index >= 0 && index < this.currentParams.length) {
       this.currentParams.splice(index, 1);
       this.renderParams();
+    }
+  }
+
+  private updateParamsCount() {
+    const paramsCount = document.getElementById("paramsCount");
+    if (paramsCount) {
+      paramsCount.textContent = this.currentParams.length.toString();
     }
   }
 
@@ -535,6 +546,9 @@ class ParamsEditor {
 
       // Create a deep copy of current params to avoid reference issues
       this.originalParams = this.currentParams.map((param) => ({ ...param }));
+
+      // Update params count
+      this.updateParamsCount();
     } catch (error) {
       console.error("Error applying changes:", error);
 
@@ -550,6 +564,7 @@ class ParamsEditor {
   private resetChanges() {
     this.currentParams = [...this.originalParams];
     this.renderParams();
+    this.updateParamsCount();
   }
 
   private setupEventListeners() {
