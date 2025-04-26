@@ -1,6 +1,10 @@
-# Params Editor Chrome Extension
+# Params Editor (Chrome Extension)
 
 A Chrome extension built with TypeScript for editing parameters.
+
+## PRD
+
+Checkout the [PRD](./PRD.md])
 
 ## Setup
 
@@ -24,13 +28,13 @@ npm run build
 
 ## Development
 
-- Run the development server:
+Run the development server:
 
 ```bash
 npm run dev
 ```
 
-- Watch for changes:
+Watch for changes:
 
 ```bash
 npm run watch

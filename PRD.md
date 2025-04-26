@@ -1,7 +1,5 @@
 # PRD: Chrome Extension - Query Param Editor
 
-## Overview
-
 Chrome extension to read, edit, add, and remove query parameters from the current tab's URL, with smart input types based on value format.
 
 ## Core Features
@@ -65,5 +63,3 @@ Chrome extension to read, edit, add, and remove query parameters from the curren
 
 - Extension will not auto-reload the page unless user clicks "Apply Changes"
 - Smart detection for types: RegEx-based parsing
-
-⸻
