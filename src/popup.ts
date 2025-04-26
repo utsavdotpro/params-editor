@@ -209,7 +209,9 @@ class ParamsEditor {
   }
 
   private initializeElements() {
-    console.log("Initializing elements");
+    // Ensure all DOM elements are found before proceeding
+    this.checkRequiredElements();
+
     // Initialize input elements
     const keyInput = document.getElementById("newParamKey") as HTMLInputElement;
     const valueInput = document.getElementById(
@@ -229,6 +231,26 @@ class ParamsEditor {
           this.addNewParam();
         }
       });
+    }
+  }
+
+  private checkRequiredElements() {
+    // Check that all required DOM elements exist
+    const requiredElements = [
+      "urlDisplay",
+      "paramsBody",
+      "addParamBtn",
+      "applyBtn",
+      "resetBtn",
+      "refreshBtn",
+    ];
+
+    const missingElements = requiredElements.filter(
+      (id) => !document.getElementById(id)
+    );
+
+    if (missingElements.length > 0) {
+      console.error("Missing required DOM elements:", missingElements);
     }
   }
 
@@ -313,14 +335,19 @@ class ParamsEditor {
       this.currentParams = [];
       this.originalParams = [];
 
+      // Parse URL parameters and convert to Param objects
       url.searchParams.forEach((value, key) => {
-        const param: Param = {
-          key,
-          value,
-          type: this.detectParamType(value),
-        };
-        this.currentParams.push(param);
-        this.originalParams.push({ ...param });
+        if (key.trim()) {
+          // Ensure we don't add empty keys
+          const param: Param = {
+            key,
+            value,
+            type: this.detectParamType(value),
+          };
+          this.currentParams.push(param);
+          // Create deep copies for originalParams to avoid reference issues
+          this.originalParams.push({ ...param });
+        }
       });
 
       this.renderParams();
@@ -330,15 +357,27 @@ class ParamsEditor {
   }
 
   private detectParamType(value: string): Param["type"] {
+    // Empty or whitespace-only values default to string
+    if (!value || value.trim() === "") {
+      return "string";
+    }
+
+    // Boolean detection
     if (value.toLowerCase() === "true" || value.toLowerCase() === "false") {
       return "boolean";
     }
-    if (!isNaN(Number(value)) && value.trim() !== "") {
+
+    // Number detection - ensure it's a valid number format
+    if (/^-?\d+(\.\d+)?$/.test(value) && !isNaN(Number(value))) {
       return "number";
     }
+
+    // Date detection - try parsing with stricter validation
     if (this.isValidDate(value)) {
       return "date";
     }
+
+    // Default to string for anything else
     return "string";
   }
 
@@ -349,18 +388,40 @@ class ParamsEditor {
 
   private renderParams() {
     const paramsBody = document.getElementById("paramsBody");
-    if (!paramsBody) return;
+    if (!paramsBody) {
+      console.error("paramsBody element not found");
+      return;
+    }
 
+    // Clear the current table body
     paramsBody.innerHTML = "";
+
+    // Early return if no parameters
+    if (this.currentParams.length === 0) {
+      const emptyRow = document.createElement("tr");
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = 3;
+      emptyCell.className = "p-4 text-center text-gray-500 italic";
+      emptyCell.textContent = "No parameters. Add one below.";
+      emptyRow.appendChild(emptyCell);
+      paramsBody.appendChild(emptyRow);
+      return;
+    }
+
+    // Render each parameter
     this.currentParams.forEach((param, index) => {
-      const row = createParamRow({
-        param,
-        index,
-        onKeyChange: this.updateParamKey.bind(this),
-        onValueChange: this.updateParamValue.bind(this),
-        onRemove: this.removeParam.bind(this),
-      });
-      paramsBody.appendChild(row);
+      try {
+        const row = createParamRow({
+          param,
+          index,
+          onKeyChange: this.updateParamKey.bind(this),
+          onValueChange: this.updateParamValue.bind(this),
+          onRemove: this.removeParam.bind(this),
+        });
+        paramsBody.appendChild(row);
+      } catch (error) {
+        console.error(`Error rendering parameter row ${index}:`, error);
+      }
     });
   }
 
@@ -378,12 +439,13 @@ class ParamsEditor {
   }
 
   private removeParam(index: number) {
-    this.currentParams.splice(index, 1);
-    this.renderParams();
+    if (index >= 0 && index < this.currentParams.length) {
+      this.currentParams.splice(index, 1);
+      this.renderParams();
+    }
   }
 
   private addNewParam() {
-    console.log("Adding new parameter");
     const keyInput = document.getElementById("newParamKey") as HTMLInputElement;
     const valueInput = document.getElementById(
       "newParamValue"
@@ -393,7 +455,8 @@ class ParamsEditor {
       const key = keyInput.value.trim();
       const value = valueInput.value.trim();
 
-      if (key && value) {
+      if (key) {
+        // Allow empty values but not empty keys
         // Check if key already exists
         const existingIndex = this.currentParams.findIndex(
           (p) => p.key === key
@@ -417,88 +480,117 @@ class ParamsEditor {
         keyInput.value = "";
         valueInput.value = "";
         keyInput.focus();
+      } else {
+        // Show error for empty key
+        alert("Parameter key cannot be empty");
+        keyInput.focus();
       }
     }
   }
 
   private async applyChanges() {
-    console.log("Applying changes");
     try {
+      // Validate parameters before applying changes
+      const invalidParams = this.currentParams.filter(
+        (param) => !param.key.trim()
+      );
+      if (invalidParams.length > 0) {
+        throw new Error(
+          `Cannot apply changes: ${invalidParams.length} parameter(s) have empty keys`
+        );
+      }
+
       const url = new URL(this.originalUrl);
       url.search = "";
 
+      // Create a new URLSearchParams object for better control
+      const searchParams = new URLSearchParams();
+
+      // Add each parameter, with proper encoding
       this.currentParams.forEach((param) => {
-        url.searchParams.append(param.key, param.value);
+        if (param.key.trim()) {
+          // Extra validation to ensure we don't add empty keys
+          searchParams.append(param.key, param.value);
+        }
       });
 
+      // Set the search property directly from the URLSearchParams object
+      url.search = searchParams.toString();
+
       const newUrl = url.toString();
-      console.log("New URL:", newUrl);
 
       // Send message to background script to update URL
-      await chrome.runtime.sendMessage({
+      const response = await chrome.runtime.sendMessage({
         type: "UPDATE_URL",
         url: newUrl,
       });
 
+      if (response && response.error) {
+        throw new Error(`Background script error: ${response.error}`);
+      }
+
       // Update local state
       this.originalUrl = newUrl;
       this.updateUrlDisplay();
-      this.originalParams = [...this.currentParams];
+
+      // Create a deep copy of current params to avoid reference issues
+      this.originalParams = this.currentParams.map((param) => ({ ...param }));
     } catch (error) {
       console.error("Error applying changes:", error);
+
+      // Show a simplified error message to the user
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert("Failed to apply changes");
+      }
     }
   }
 
   private resetChanges() {
-    console.log("Resetting changes");
     this.currentParams = [...this.originalParams];
     this.renderParams();
   }
 
   private setupEventListeners() {
-    console.log("Setting up event listeners");
-
-    // Refresh button
-    const refreshBtn = document.getElementById("refreshBtn");
-    if (refreshBtn) {
-      refreshBtn.addEventListener("click", () => {
-        console.log("Refresh button clicked");
-
-        // First reload the current URL from the tab
-        this.loadCurrentUrl();
-
-        // Also refresh the actual tab
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (tabs[0]?.id) chrome.tabs.reload(tabs[0].id);
-        });
+    // Use a more robust method to ensure event listeners are properly attached
+    this.attachEventListener("refreshBtn", "click", () => {
+      // First reload the current URL from the tab
+      this.loadCurrentUrl();
+      // Also refresh the actual tab
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]?.id) chrome.tabs.reload(tabs[0].id);
       });
-    }
+    });
 
-    // Add parameter button
-    const addParamBtn = document.getElementById("addParamBtn");
-    if (addParamBtn) {
-      addParamBtn.addEventListener("click", () => {
-        console.log("Add parameter button clicked");
-        this.addNewParam();
-      });
-    }
+    this.attachEventListener("addParamBtn", "click", () => {
+      this.addNewParam();
+    });
 
-    // Apply changes button
-    const applyBtn = document.getElementById("applyBtn");
-    if (applyBtn) {
-      applyBtn.addEventListener("click", () => {
-        console.log("Apply changes button clicked");
-        this.applyChanges();
-      });
-    }
+    this.attachEventListener("applyBtn", "click", async () => {
+      await this.applyChanges();
+    });
 
-    // Reset button
-    const resetBtn = document.getElementById("resetBtn");
-    if (resetBtn) {
-      resetBtn.addEventListener("click", () => {
-        console.log("Reset button clicked");
-        this.resetChanges();
-      });
+    this.attachEventListener("resetBtn", "click", () => {
+      this.resetChanges();
+    });
+  }
+
+  private attachEventListener(
+    elementId: string,
+    eventType: string,
+    handler: EventListener
+  ) {
+    const element = document.getElementById(elementId);
+    if (element) {
+      // Remove any existing listeners first to prevent duplicates
+      element.removeEventListener(eventType, handler);
+      // Add the new listener
+      element.addEventListener(eventType, handler);
+    } else {
+      console.error(
+        `Failed to attach event listener: element #${elementId} not found`
+      );
     }
   }
 }
