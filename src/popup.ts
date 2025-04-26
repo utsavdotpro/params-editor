@@ -5,7 +5,7 @@ import "./global.css";
 interface Param {
   key: string;
   value: string;
-  type: "string" | "number" | "date" | "boolean" | "list";
+  type: "string" | "number" | "date" | "boolean" | "list" | "json";
 }
 
 // Reusable component interfaces
@@ -65,6 +65,11 @@ const createValueInput = (props: ValueInputProps): HTMLElement => {
   const container = document.createElement("div");
   container.className = "w-full";
 
+  // Log param key and type for debugging
+  console.log(
+    `createValueInput - Param: ${param.key}, Type: ${param.type}, Value: ${param.value.substring(0, 50)}`
+  );
+
   switch (param.type) {
     case "boolean":
       container.appendChild(
@@ -87,6 +92,17 @@ const createValueInput = (props: ValueInputProps): HTMLElement => {
     case "list":
       container.appendChild(
         createListInput(param.value, (value) => onValueChange(index, value))
+      );
+      break;
+
+    case "json":
+      console.log("Creating JSON input for:", param.key);
+      container.appendChild(
+        createJsonInput(
+          param.value,
+          (value) => onValueChange(index, value),
+          param.key
+        )
       );
       break;
 
@@ -362,6 +378,184 @@ const createListInput = (
   return container;
 };
 
+// New component for JSON input
+const createJsonInput = (
+  value: string,
+  onChange: (value: string) => void,
+  paramKey: string
+): HTMLElement => {
+  const container = document.createElement("div");
+  container.className = "w-full relative";
+
+  // Ensure we're working with a decoded value
+  let decodedValue = value;
+  try {
+    if (value.includes("%")) {
+      decodedValue = decodeURIComponent(value);
+      console.log(`JSON Input - Decoded:`, decodedValue);
+    }
+  } catch (e) {
+    console.log(`JSON Input - Decoding failed:`, e);
+    decodedValue = value;
+  }
+
+  const previewContainer = document.createElement("div");
+  previewContainer.className =
+    "json-preview p-1.5 border border-gray-300 rounded cursor-pointer hover:border-green-500 bg-gray-50 min-h-[38px] flex items-center justify-between";
+
+  const previewText = document.createElement("code");
+  previewText.className = "text-xs text-gray-600 truncate"; // Truncate long previews
+  try {
+    // Try to parse and prettify, fallback to raw value
+    const parsed = JSON.parse(decodedValue);
+    previewText.textContent = JSON.stringify(parsed, null, 2).substring(0, 100);
+    if (JSON.stringify(parsed).length > 100) {
+      previewText.textContent += "...";
+    }
+  } catch {
+    previewText.textContent = decodedValue.substring(0, 100);
+    if (decodedValue.length > 100) {
+      previewText.textContent += "...";
+    }
+  }
+  previewContainer.appendChild(previewText);
+
+  const editIcon = createIcon("edit-3", "Edit JSON");
+  editIcon.className = "w-4 h-4 ml-2 text-gray-500 flex-shrink-0";
+  previewContainer.appendChild(editIcon);
+
+  container.appendChild(previewContainer);
+
+  // Modal for editing
+  const modal = document.createElement("div");
+  modal.className =
+    "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden";
+  modal.onclick = (e) => {
+    // Close modal if backdrop is clicked
+    if (e.target === modal) {
+      modal.classList.add("hidden");
+    }
+  };
+
+  const modalContent = document.createElement("div");
+  modalContent.className =
+    "bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col";
+
+  const modalHeader = document.createElement("div");
+  modalHeader.className =
+    "p-3 border-b border-gray-200 text-lg font-semibold text-gray-700";
+  modalHeader.textContent = `Edit ${paramKey}`;
+
+  const modalBody = document.createElement("div");
+  modalBody.className = "p-4 overflow-y-auto";
+
+  const textarea = document.createElement("textarea");
+  textarea.className =
+    "w-full h-64 p-2 border border-gray-300 rounded focus:outline-none focus:border-green-500 font-mono text-sm";
+  textarea.placeholder = "Enter valid JSON here...";
+
+  modalBody.appendChild(textarea);
+
+  const modalFooter = document.createElement("div");
+  modalFooter.className = "p-3 border-t border-gray-200 flex justify-end gap-2";
+
+  const errorMsg = document.createElement("div");
+  errorMsg.className = "text-red-600 text-xs mr-auto hidden";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.textContent = "Cancel";
+  cancelButton.className =
+    "px-4 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300";
+  cancelButton.onclick = () => {
+    modal.classList.add("hidden");
+    errorMsg.classList.add("hidden"); // Hide error on cancel
+  };
+
+  const saveButton = document.createElement("button");
+  saveButton.textContent = "Save";
+  saveButton.className =
+    "px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700";
+  saveButton.onclick = () => {
+    try {
+      const newValue = textarea.value;
+      JSON.parse(newValue); // Validate JSON
+      onChange(newValue); // Pass the raw (but validated) string back - keep it decoded
+
+      // Update preview with the new decoded value
+      try {
+        const parsed = JSON.parse(newValue);
+        previewText.textContent = JSON.stringify(parsed, null, 2).substring(
+          0,
+          100
+        );
+        if (JSON.stringify(parsed).length > 100) {
+          previewText.textContent += "...";
+        }
+      } catch {
+        previewText.textContent = newValue.substring(0, 100);
+        if (newValue.length > 100) {
+          previewText.textContent += "...";
+        }
+      }
+
+      modal.classList.add("hidden");
+      errorMsg.classList.add("hidden");
+    } catch (err) {
+      errorMsg.textContent = "Invalid JSON: " + (err as Error).message;
+      errorMsg.classList.remove("hidden");
+      textarea.focus(); // Keep focus on textarea if error
+    }
+  };
+
+  modalFooter.appendChild(errorMsg);
+  modalFooter.appendChild(cancelButton);
+  modalFooter.appendChild(saveButton);
+
+  modalContent.appendChild(modalHeader);
+  modalContent.appendChild(modalBody);
+  modalContent.appendChild(modalFooter);
+  modal.appendChild(modalContent);
+
+  // Add modal to the body, but keep it hidden initially
+  document.body.appendChild(modal);
+
+  // Show modal when preview is clicked
+  previewContainer.onclick = () => {
+    try {
+      // Prettify JSON in textarea for editing
+      const parsed = JSON.parse(decodedValue);
+      textarea.value = JSON.stringify(parsed, null, 2);
+    } catch {
+      textarea.value = decodedValue; // Fallback to raw value if parsing fails
+    }
+    errorMsg.classList.add("hidden"); // Clear previous errors
+    modal.classList.remove("hidden");
+    textarea.focus(); // Focus textarea when modal opens
+  };
+
+  // Cleanup modal when container is removed (optional but good practice)
+  const observer = new MutationObserver((mutationsList, obs) => {
+    for (const mutation of mutationsList) {
+      if (mutation.removedNodes) {
+        mutation.removedNodes.forEach((node) => {
+          if (node === container) {
+            modal.remove(); // Remove modal from DOM
+            obs.disconnect(); // Stop observing
+            return;
+          }
+        });
+      }
+    }
+  });
+
+  observer.observe(container.parentNode || document.body, {
+    childList: true,
+    subtree: true,
+  });
+
+  return container;
+};
+
 const createIcon = (iconName: string, alt: string): HTMLImageElement => {
   const icon = document.createElement("img");
   icon.src = `https://unpkg.com/lucide-static@latest/icons/${iconName}.svg`;
@@ -544,49 +738,101 @@ class ParamsEditor {
   }
 
   private detectParamType(value: string): Param["type"] {
+    // Log the initial value received
+    console.log(`detectParamType - Input: '${value}'`);
+
     // Empty or whitespace-only values default to string
     if (!value || value.trim() === "") {
+      console.log(`detectParamType - Result: string (empty)`);
       return "string";
     }
 
+    // Try to decode URL-encoded values first
+    let decodedValue = value;
+    try {
+      // Only decode if it contains URL-encoded characters
+      if (value.includes("%")) {
+        decodedValue = decodeURIComponent(value);
+        console.log(`detectParamType - Decoded: '${decodedValue}'`);
+      }
+    } catch (e) {
+      console.log(`detectParamType - Decoding failed: ${e}`);
+      // If decoding fails, use the original value
+      decodedValue = value;
+    }
+
+    // Trim the value for accurate detection
+    const trimmedValue = decodedValue.trim();
+    console.log(`detectParamType - Trimmed: '${trimmedValue}'`);
+
+    // JSON detection (Object or Array)
+    if (
+      (trimmedValue.startsWith("{") && trimmedValue.endsWith("}")) ||
+      (trimmedValue.startsWith("[") && trimmedValue.endsWith("]"))
+    ) {
+      console.log(`detectParamType - Potential JSON detected`);
+      try {
+        // Attempt to parse to validate JSON structure
+        JSON.parse(trimmedValue);
+        console.log(`detectParamType - Result: json (validated)`);
+        return "json"; // It's valid JSON
+      } catch (e) {
+        console.log(
+          `detectParamType - Result: string (JSON parse failed: ${e})`
+        );
+        // Parsing failed, treat as string
+        return "string";
+      }
+    }
+
     // Boolean detection
-    if (value.toLowerCase() === "true" || value.toLowerCase() === "false") {
+    if (
+      trimmedValue.toLowerCase() === "true" ||
+      trimmedValue.toLowerCase() === "false"
+    ) {
+      console.log(`detectParamType - Result: boolean`);
       return "boolean";
     }
 
     // Number detection - ensure it's a valid number format
-    if (/^-?\d+(\.\d+)?$/.test(value) && !isNaN(Number(value))) {
+    if (/^-?\d+(\.\d+)?$/.test(trimmedValue) && !isNaN(Number(trimmedValue))) {
+      console.log(`detectParamType - Result: number`);
       return "number";
     }
 
     // Date detection - try parsing with stricter validation
-    if (this.isValidDate(value)) {
+    if (this.isValidDate(trimmedValue)) {
+      console.log(`detectParamType - Result: date`);
       return "date";
     }
 
-    // List detection - check for comma-separated values, including trailing commas
-    if (value.includes(",")) {
+    // List detection - check for comma-separated values
+    if (trimmedValue.includes(",")) {
       // Skip detection for JSON-like structures (arrays, objects)
       const hasJsonStructure =
         // Check for JSON array pattern
-        (value.trim().startsWith("[") && value.trim().endsWith("]")) ||
+        (trimmedValue.startsWith("[") && trimmedValue.endsWith("]")) ||
         // Check for JSON object pattern
-        (value.trim().startsWith("{") && value.trim().endsWith("}"));
+        (trimmedValue.startsWith("{") && trimmedValue.endsWith("}"));
 
       if (!hasJsonStructure) {
         // Handle trailing commas and still detect as list
-        const trimmedValue = value.endsWith(",") ? value.slice(0, -1) : value;
+        const listValue = trimmedValue.endsWith(",")
+          ? trimmedValue.slice(0, -1)
+          : trimmedValue;
         // Make sure we have actual values (not just commas)
-        const hasValues = trimmedValue
+        const hasValues = listValue
           .split(",")
-          .some((item) => item.trim() !== "");
+          .some((item: string) => item.trim() !== "");
         if (hasValues) {
+          console.log(`detectParamType - Result: list`);
           return "list";
         }
       }
     }
 
     // Default to string for anything else
+    console.log(`detectParamType - Result: string (default)`);
     return "string";
   }
 
