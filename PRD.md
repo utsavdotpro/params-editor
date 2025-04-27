@@ -5,16 +5,20 @@ Chrome extension to read, edit, add, and remove query parameters from the curren
 ## Core Features
 
 - Read and parse current tab URL
-- Display list of query parameters
+- Display list of query parameters with parameter count
 - Editable fields with smart input types:
   - Text input for strings
   - Number input for numbers
   - Date picker for date strings
   - Boolean toggle for true/false
-- Add new parameters
+  - List editor for comma-separated values
+  - JSON editor for JSON objects/arrays
+- Expandable URL display with syntax highlighting for parameter keys
+- Add new parameters with auto-detected input types
 - Remove existing parameters
-- Apply changes (update URL)
-- Reset to original
+- Apply changes with visual feedback (update URL)
+- Reset to original values
+- Refresh active tab URL
 
 ## Requirements
 
