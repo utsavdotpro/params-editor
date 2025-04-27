@@ -1108,6 +1108,19 @@ class ParamsEditor {
 
   private async applyChanges() {
     try {
+      // Check if there are values in the new param input fields and add them first
+      const keyInput = document.getElementById(
+        "newParamKey"
+      ) as HTMLInputElement;
+      const valueInput = document.getElementById(
+        "newParamValue"
+      ) as HTMLInputElement;
+
+      if (keyInput && valueInput && keyInput.value.trim()) {
+        // If we have a key in the input field, add it before applying changes
+        this.addNewParam();
+      }
+
       // Validate parameters before applying changes
       const invalidParams = this.currentParams.filter(
         (param) => !param.key.trim()
