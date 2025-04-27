@@ -290,10 +290,12 @@ const createListInput = (
 
       const itemChip = document.createElement("div");
       itemChip.className =
-        "selected-item bg-green-100 text-green-800 rounded px-2 py-0.5 text-xs flex items-center";
+        "selected-item bg-green-100 text-green-800 rounded px-2 py-0.5 text-xs flex items-center cursor-text";
 
       const itemText = document.createElement("span");
       itemText.textContent = itemValue;
+      itemText.className = "cursor-text";
+
       itemChip.appendChild(itemText);
 
       previewContainer.appendChild(itemChip);
@@ -340,28 +342,30 @@ const createListInput = (
 
       const itemChip = document.createElement("div");
       itemChip.className =
-        "selected-item bg-green-100 text-green-800 rounded px-2 py-0.5 text-xs flex items-center";
+        "selected-item bg-green-100 text-green-800 rounded px-2 py-0.5 text-xs flex items-center cursor-text";
 
       const itemText = document.createElement("span");
       itemText.textContent = itemValue;
-      itemText.className = "cursor-pointer";
+      itemText.className = "cursor-text";
 
       // Add edit functionality
       itemText.onclick = (e) => {
         e.stopPropagation();
 
-        // Create edit input to replace the chip
-        const editInput = document.createElement("input");
-        editInput.type = "text";
-        editInput.className =
-          "outline-none border-none bg-green-50 text-xs py-0.5 w-full";
-        editInput.value = itemValue;
-        editInput.style.minWidth = "20px";
-        editInput.style.width = itemValue.length * 8 + "px"; // Approximate width based on content
+        const editSpan = document.createElement("span");
+        editSpan.contentEditable = "true";
+        editSpan.className =
+          "outline-none bg-green-50 text-xs py-0.5 min-w-[1.25rem] inline-block cursor-text";
+        editSpan.textContent = itemValue;
+
+        // Prevent event bubbling that might interfere with cursor positioning
+        editSpan.addEventListener("click", (e) => {
+          e.stopPropagation();
+        });
 
         // Handle saving edits
         const saveEdit = () => {
-          const newValue = editInput.value.trim();
+          const newValue = editSpan.textContent?.trim() || "";
           if (newValue && newValue !== itemValue) {
             // Update the value in our array
             editingValues[itemIndex] = newValue;
@@ -376,22 +380,29 @@ const createListInput = (
           }
         };
 
+        // Add a flag to prevent duplicate processing
+        let isProcessing = false;
+
         // Save on enter or blur
-        editInput.onkeydown = (e) => {
+        editSpan.addEventListener("keydown", (e) => {
           if (e.key === "Enter") {
             e.preventDefault();
+            isProcessing = true;
             saveEdit();
           } else if (e.key === "Escape") {
+            isProcessing = true;
             renderSelectedItems(); // Cancel edit
           }
-        };
-        editInput.onblur = saveEdit;
+        });
 
-        // Replace the text with the input
-        itemChip.replaceChild(editInput, itemText);
+        editSpan.addEventListener("blur", () => {
+          // Only process blur if keydown didn't already handle it
+          if (!isProcessing) saveEdit();
+        });
+
+        itemChip.replaceChild(editSpan, itemText);
         setTimeout(() => {
-          editInput.focus();
-          editInput.select();
+          editSpan.focus();
         }, 0);
       };
 
