@@ -67,3 +67,26 @@ Chrome extension to read, edit, add, and remove query parameters from the curren
 
 - Extension will not auto-reload the page unless user clicks "Apply Changes"
 - Smart detection for types: RegEx-based parsing
+
+## Color Schema
+
+### Primary Colors
+
+- Green: `#10b981` (green-500) - Used for primary actions, buttons, and highlights
+- Green Hover: `#059669` (green-600) - Used for hover states of green elements
+
+### Neutral Colors
+
+- White: `#ffffff` - For backgrounds and content areas
+- Gray-100: `#f3f4f6` - For light backgrounds, form elements
+- Gray-200: `#e5e7eb` - For borders, secondary buttons
+- Gray-300: `#d1d5db` - For input borders
+- Gray-400: `#9ca3af` - For inactive elements
+- Gray-600: `#4b5563` - For secondary text
+- Gray-700: `#374151` - For primary text
+- Gray-800: `#1f2937` - For headings
+- Black: `#000000` - For borders and certain UI elements
+
+### Accent Colors
+
+- Red-500: `#ef4444` - For error states and deletion actions (implied by the trash function)
