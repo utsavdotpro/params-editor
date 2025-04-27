@@ -75,6 +75,9 @@ const addApplyOnEnterHandler = (input: HTMLElement) => {
         // Find the params editor instance and apply changes
         const paramsEditor = (window as any).paramsEditorInstance;
         if (paramsEditor && typeof paramsEditor.applyChanges === "function") {
+          // Prevent default form submission behavior
+          e.preventDefault();
+          // Apply changes through the editor instance which will show the spinner
           paramsEditor.applyChanges();
         }
       }
@@ -806,6 +809,12 @@ class ParamsEditor {
         }
       });
     }
+
+    // Initialize Apply button text
+    const applyBtn = document.getElementById("applyBtn");
+    if (applyBtn) {
+      applyBtn.textContent = "Apply";
+    }
   }
 
   private checkRequiredElements() {
@@ -1153,7 +1162,50 @@ class ParamsEditor {
     }
   }
 
+  private showApplySpinner() {
+    const applyBtn = document.getElementById("applyBtn");
+    if (applyBtn) {
+      // Clear any existing content
+      applyBtn.innerHTML = "";
+
+      // Create and add spinner
+      const spinner = document.createElement("div");
+      spinner.className =
+        "inline-block w-4 h-4 border-2 border-gray-200 border-t-green-500 rounded-full animate-spin mr-1";
+
+      // Create text span
+      const textSpan = document.createElement("span");
+      textSpan.textContent = "Applying...";
+
+      // Add both to the button
+      applyBtn.appendChild(spinner);
+      applyBtn.appendChild(textSpan);
+
+      // Disable button while spinner is showing
+      applyBtn.setAttribute("disabled", "true");
+      applyBtn.classList.add("opacity-75", "cursor-not-allowed");
+
+      // Automatically hide spinner after 1 second
+      setTimeout(() => this.hideApplySpinner(), 1000);
+    }
+  }
+
+  private hideApplySpinner() {
+    const applyBtn = document.getElementById("applyBtn");
+    if (applyBtn) {
+      // Reset button content
+      applyBtn.textContent = "Apply";
+
+      // Re-enable button
+      applyBtn.removeAttribute("disabled");
+      applyBtn.classList.remove("opacity-75", "cursor-not-allowed");
+    }
+  }
+
   private async applyChanges() {
+    // Show spinner for 1 second
+    this.showApplySpinner();
+
     try {
       // Check if there are values in the new param input fields and add them first
       const keyInput = document.getElementById(
