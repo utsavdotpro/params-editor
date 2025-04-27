@@ -52,12 +52,12 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   row.appendChild(keyCell);
 
   // Value cell - let it take remaining space but not push others out
-  const valueCell = createCell("w-[60%] overflow-hidden");
+  const valueCell = createCell("w-[65%] overflow-hidden");
   valueCell.appendChild(createValueInput({ param, index, onValueChange }));
   row.appendChild(valueCell);
 
   // Action cell - ensure fixed width
-  const actionCell = createCell("w-[10%] !py-0 text-center");
+  const actionCell = createCell("w-[5%] !py-0");
   actionCell.appendChild(createRemoveButton(() => onRemove(index)));
   row.appendChild(actionCell);
 
@@ -316,30 +316,10 @@ const createListInput = (
   updatePreview(selectedValues);
   container.appendChild(previewContainer);
 
-  // Modal for editing
-  const modal = document.createElement("div");
-  modal.className =
-    "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden";
-  modal.onclick = (e) => {
-    // Close modal if backdrop is clicked
-    if (e.target === modal) {
-      modal.classList.add("hidden");
-    }
-  };
+  // Copy the array for editing
+  const editingValues = [...selectedValues];
 
-  const modalContent = document.createElement("div");
-  modalContent.className =
-    "bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col";
-
-  const modalHeader = document.createElement("div");
-  modalHeader.className =
-    "p-3 border-b border-gray-200 text-lg font-semibold text-gray-700";
-  modalHeader.textContent = `Edit ${paramKey}`;
-
-  const modalBody = document.createElement("div");
-  modalBody.className = "p-4";
-
-  // Create the editable multiselect (the same as the original one)
+  // Create multiselect container for modal body
   const multiSelectContainer = document.createElement("div");
   multiSelectContainer.className =
     "w-full border border-gray-300 rounded focus-within:border-green-500 overflow-hidden";
@@ -347,9 +327,6 @@ const createListInput = (
   // Input container holds selected items and input field
   const inputContainer = document.createElement("div");
   inputContainer.className = "flex flex-wrap p-1.5 min-h-[38px] gap-1";
-
-  // Copy the array for editing
-  const editingValues = [...selectedValues];
 
   // Function to render all selected items in the editor
   const renderSelectedItems = () => {
@@ -475,47 +452,26 @@ const createListInput = (
   inputContainer.appendChild(inputField);
   multiSelectContainer.appendChild(inputContainer);
 
-  modalBody.appendChild(multiSelectContainer);
+  // Create modal with the reusable component
+  const { showModal, hideModal, cleanup } = createModal({
+    title: `Edit ${paramKey}`,
+    bodyContent: multiSelectContainer,
+    onSave: () => {
+      // Join the values and save
+      const newListValue = editingValues.join(",");
+      onChange(newListValue);
 
-  const modalFooter = document.createElement("div");
-  modalFooter.className = "p-3 border-t border-gray-200 flex justify-end gap-2";
+      // Update the preview
+      updatePreview(editingValues);
 
-  const cancelButton = document.createElement("button");
-  cancelButton.textContent = "Cancel";
-  cancelButton.className =
-    "px-4 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300";
-  cancelButton.onclick = () => {
-    modal.classList.add("hidden");
-    // Reset the editing values on cancel
-    editingValues.length = 0;
-    selectedValues.forEach((v) => editingValues.push(v));
-  };
-
-  const saveButton = document.createElement("button");
-  saveButton.textContent = "Save";
-  saveButton.className =
-    "px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700";
-  saveButton.onclick = () => {
-    // Join the values and save
-    const newListValue = editingValues.join(",");
-    onChange(newListValue);
-
-    // Update the preview
-    updatePreview(editingValues);
-
-    modal.classList.add("hidden");
-  };
-
-  modalFooter.appendChild(cancelButton);
-  modalFooter.appendChild(saveButton);
-
-  modalContent.appendChild(modalHeader);
-  modalContent.appendChild(modalBody);
-  modalContent.appendChild(modalFooter);
-  modal.appendChild(modalContent);
-
-  // Add modal to the body, but keep it hidden initially
-  document.body.appendChild(modal);
+      hideModal();
+    },
+    onCancel: () => {
+      // Reset the editing values on cancel
+      editingValues.length = 0;
+      selectedValues.forEach((v) => editingValues.push(v));
+    },
+  });
 
   // Show modal when preview is clicked
   previewContainer.onclick = () => {
@@ -526,7 +482,7 @@ const createListInput = (
     // Render the items
     setTimeout(() => renderSelectedItems(), 0);
 
-    modal.classList.remove("hidden");
+    showModal();
     inputField.focus();
   };
 
@@ -536,7 +492,7 @@ const createListInput = (
       if (mutation.removedNodes) {
         mutation.removedNodes.forEach((node) => {
           if (node === container) {
-            modal.remove();
+            cleanup();
             obs.disconnect();
             return;
           }
@@ -602,98 +558,53 @@ const createJsonInput = (
 
   container.appendChild(previewContainer);
 
-  // Modal for editing
-  const modal = document.createElement("div");
-  modal.className =
-    "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden";
-  modal.onclick = (e) => {
-    // Close modal if backdrop is clicked
-    if (e.target === modal) {
-      modal.classList.add("hidden");
-    }
-  };
-
-  const modalContent = document.createElement("div");
-  modalContent.className =
-    "bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col";
-
-  const modalHeader = document.createElement("div");
-  modalHeader.className =
-    "p-3 border-b border-gray-200 text-lg font-semibold text-gray-700";
-  modalHeader.textContent = `Edit ${paramKey}`;
-
-  const modalBody = document.createElement("div");
-  modalBody.className = "p-4 overflow-y-auto";
-
+  // Create textarea for JSON editing
   const textarea = document.createElement("textarea");
   textarea.className =
-    "w-full h-64 p-2 border border-gray-300 rounded focus:outline-none focus:border-green-500 font-mono text-sm";
+    "w-full min-h-32 h-64 max-h-full p-2 border border-gray-300 rounded focus:outline-none focus:border-green-500 font-mono text-sm";
   textarea.placeholder = "Enter valid JSON here...";
 
-  modalBody.appendChild(textarea);
-
-  const modalFooter = document.createElement("div");
-  modalFooter.className = "p-3 border-t border-gray-200 flex justify-end gap-2";
-
+  // Create error message element
   const errorMsg = document.createElement("div");
   errorMsg.className = "text-red-600 text-xs mr-auto hidden";
 
-  const cancelButton = document.createElement("button");
-  cancelButton.textContent = "Cancel";
-  cancelButton.className =
-    "px-4 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300";
-  cancelButton.onclick = () => {
-    modal.classList.add("hidden");
-    errorMsg.classList.add("hidden"); // Hide error on cancel
-  };
-
-  const saveButton = document.createElement("button");
-  saveButton.textContent = "Save";
-  saveButton.className =
-    "px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700";
-  saveButton.onclick = () => {
-    try {
-      const newValue = textarea.value;
-      JSON.parse(newValue); // Validate JSON
-      onChange(newValue); // Pass the raw (but validated) string back - keep it decoded
-
-      // Update preview with the new decoded value
+  // Create modal with reusable component
+  const { showModal, hideModal, cleanup } = createModal({
+    title: `Edit ${paramKey}`,
+    bodyContent: textarea,
+    errorMsg: errorMsg,
+    onSave: () => {
       try {
-        const parsed = JSON.parse(newValue);
-        previewText.textContent = JSON.stringify(parsed, null, 2).substring(
-          0,
-          100
-        );
-        if (JSON.stringify(parsed).length > 100) {
-          previewText.textContent += "...";
+        const newValue = textarea.value;
+        JSON.parse(newValue); // Validate JSON
+        onChange(newValue); // Pass the raw (but validated) string back - keep it decoded
+
+        // Update preview with the new decoded value
+        try {
+          const parsed = JSON.parse(newValue);
+          previewText.textContent = JSON.stringify(parsed, null, 2).substring(
+            0,
+            100
+          );
+          if (JSON.stringify(parsed).length > 100) {
+            previewText.textContent += "...";
+          }
+        } catch {
+          previewText.textContent = newValue.substring(0, 100);
+          if (newValue.length > 100) {
+            previewText.textContent += "...";
+          }
         }
-      } catch {
-        previewText.textContent = newValue.substring(0, 100);
-        if (newValue.length > 100) {
-          previewText.textContent += "...";
-        }
+
+        hideModal();
+        errorMsg.classList.add("hidden");
+      } catch (err) {
+        errorMsg.textContent = "Invalid JSON: " + (err as Error).message;
+        errorMsg.classList.remove("hidden");
+        textarea.focus(); // Keep focus on textarea if error
       }
-
-      modal.classList.add("hidden");
-      errorMsg.classList.add("hidden");
-    } catch (err) {
-      errorMsg.textContent = "Invalid JSON: " + (err as Error).message;
-      errorMsg.classList.remove("hidden");
-      textarea.focus(); // Keep focus on textarea if error
-    }
-  };
-
-  modalFooter.appendChild(errorMsg);
-  modalFooter.appendChild(cancelButton);
-  modalFooter.appendChild(saveButton);
-
-  modalContent.appendChild(modalHeader);
-  modalContent.appendChild(modalBody);
-  modalContent.appendChild(modalFooter);
-  modal.appendChild(modalContent);
-
-  // Add modal to the body, but keep it hidden initially
-  document.body.appendChild(modal);
+    },
+  });
 
   // Show modal when preview is clicked
   previewContainer.onclick = () => {
@@ -705,18 +616,18 @@ const createJsonInput = (
       textarea.value = decodedValue; // Fallback to raw value if parsing fails
     }
     errorMsg.classList.add("hidden"); // Clear previous errors
-    modal.classList.remove("hidden");
+    showModal();
     textarea.focus(); // Focus textarea when modal opens
   };
 
-  // Cleanup modal when container is removed (optional but good practice)
+  // Cleanup modal when container is removed
   const observer = new MutationObserver((mutationsList, obs) => {
     for (const mutation of mutationsList) {
       if (mutation.removedNodes) {
         mutation.removedNodes.forEach((node) => {
           if (node === container) {
-            modal.remove(); // Remove modal from DOM
-            obs.disconnect(); // Stop observing
+            cleanup();
+            obs.disconnect();
             return;
           }
         });
@@ -738,6 +649,100 @@ const createIcon = (iconName: string, alt: string): HTMLImageElement => {
   icon.className = "w-4 h-4 align-text-bottom stroke-current fill-none";
   icon.alt = alt;
   return icon;
+};
+
+// Create a reusable modal component
+interface ModalOptions {
+  title: string;
+  bodyContent: HTMLElement;
+  onSave: () => void;
+  onCancel?: () => void;
+  saveLabel?: string;
+  cancelLabel?: string;
+  errorMsg?: HTMLElement;
+}
+
+const createModal = (
+  options: ModalOptions
+): {
+  modalElement: HTMLElement;
+  showModal: () => void;
+  hideModal: () => void;
+  cleanup: () => void;
+} => {
+  const modal = document.createElement("div");
+  modal.className =
+    "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden";
+  modal.onclick = (e) => {
+    // Close modal if backdrop is clicked
+    if (e.target === modal) {
+      hideModal();
+      if (options.onCancel) options.onCancel();
+    }
+  };
+
+  const modalContent = document.createElement("div");
+  modalContent.className =
+    "bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col";
+
+  const modalHeader = document.createElement("div");
+  modalHeader.className =
+    "p-3 border-b border-gray-200 text-lg font-semibold text-gray-700";
+  modalHeader.textContent = options.title;
+
+  const modalBody = document.createElement("div");
+  modalBody.className = "p-4 overflow-y-auto";
+  modalBody.appendChild(options.bodyContent);
+
+  const modalFooter = document.createElement("div");
+  modalFooter.className = "p-3 border-t border-gray-200 flex justify-end gap-2";
+
+  // Add error message if provided
+  if (options.errorMsg) {
+    modalFooter.appendChild(options.errorMsg);
+  }
+
+  const cancelButton = document.createElement("button");
+  cancelButton.textContent = options.cancelLabel || "Cancel";
+  cancelButton.className =
+    "px-4 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300";
+  cancelButton.onclick = () => {
+    hideModal();
+    if (options.onCancel) options.onCancel();
+  };
+
+  const saveButton = document.createElement("button");
+  saveButton.textContent = options.saveLabel || "Save";
+  saveButton.className =
+    "px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700";
+  saveButton.onclick = () => {
+    options.onSave();
+  };
+
+  modalFooter.appendChild(cancelButton);
+  modalFooter.appendChild(saveButton);
+
+  modalContent.appendChild(modalHeader);
+  modalContent.appendChild(modalBody);
+  modalContent.appendChild(modalFooter);
+  modal.appendChild(modalContent);
+
+  // Add modal to the body, but keep it hidden initially
+  document.body.appendChild(modal);
+
+  const showModal = () => {
+    modal.classList.remove("hidden");
+  };
+
+  const hideModal = () => {
+    modal.classList.add("hidden");
+  };
+
+  const cleanup = () => {
+    modal.remove();
+  };
+
+  return { modalElement: modal, showModal, hideModal, cleanup };
 };
 
 const createRemoveButton = (onClick: () => void): HTMLButtonElement => {
