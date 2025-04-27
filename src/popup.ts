@@ -44,6 +44,10 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   keyInput.value = param.key;
   keyInput.onchange = (e) =>
     onKeyChange(index, (e.target as HTMLInputElement).value);
+
+  // Use the shared addApplyOnEnterHandler function
+  addApplyOnEnterHandler(keyInput);
+
   keyCell.appendChild(keyInput);
   row.appendChild(keyCell);
 
@@ -60,6 +64,24 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   return row;
 };
 
+// Add an Enter key handler to an input that applies changes when Enter is pressed
+const addApplyOnEnterHandler = (input: HTMLElement) => {
+  if (
+    input instanceof HTMLInputElement ||
+    input instanceof HTMLTextAreaElement
+  ) {
+    input.addEventListener("keypress", (e: Event) => {
+      if ((e as KeyboardEvent).key === "Enter") {
+        // Find the params editor instance and apply changes
+        const paramsEditor = (window as any).paramsEditorInstance;
+        if (paramsEditor && typeof paramsEditor.applyChanges === "function") {
+          paramsEditor.applyChanges();
+        }
+      }
+    });
+  }
+};
+
 const createValueInput = (props: ValueInputProps): HTMLElement => {
   const { param, index, onValueChange } = props;
   const container = document.createElement("div");
@@ -72,21 +94,26 @@ const createValueInput = (props: ValueInputProps): HTMLElement => {
 
   switch (param.type) {
     case "boolean":
-      container.appendChild(
-        createBooleanInput(param.value, (value) => onValueChange(index, value))
+      const booleanInput = createBooleanInput(param.value, (value) =>
+        onValueChange(index, value)
       );
+      container.appendChild(booleanInput);
       break;
 
     case "number":
-      container.appendChild(
-        createNumberInput(param.value, (value) => onValueChange(index, value))
+      const numberInput = createNumberInput(param.value, (value) =>
+        onValueChange(index, value)
       );
+      container.appendChild(numberInput);
+      addApplyOnEnterHandler(numberInput);
       break;
 
     case "date":
-      container.appendChild(
-        createDateInput(param.value, (value) => onValueChange(index, value))
+      const dateInput = createDateInput(param.value, (value) =>
+        onValueChange(index, value)
       );
+      container.appendChild(dateInput);
+      addApplyOnEnterHandler(dateInput);
       break;
 
     case "list":
@@ -111,9 +138,11 @@ const createValueInput = (props: ValueInputProps): HTMLElement => {
       break;
 
     default:
-      container.appendChild(
-        createTextInput(param.value, (value) => onValueChange(index, value))
+      const textInput = createTextInput(param.value, (value) =>
+        onValueChange(index, value)
       );
+      container.appendChild(textInput);
+      addApplyOnEnterHandler(textInput);
   }
 
   return container;
@@ -730,6 +759,8 @@ class ParamsEditor {
 
   constructor() {
     console.log("ParamsEditor initialized");
+    // Store a reference to this instance for global access
+    (window as any).paramsEditorInstance = this;
     this.initializeElements();
     this.loadCurrentUrl();
     this.setupEventListeners();
@@ -746,7 +777,7 @@ class ParamsEditor {
     ) as HTMLInputElement;
 
     if (keyInput && valueInput) {
-      // Add keyboard event listeners for Enter key
+      // Add keyboard event listeners for navigation
       keyInput.addEventListener("keypress", (e) => {
         if (e.key === "Enter") {
           valueInput.focus();
