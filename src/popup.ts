@@ -8,6 +8,26 @@ interface Param {
   type: "string" | "number" | "date" | "boolean" | "list" | "json";
 }
 
+// Utility function to debounce function calls
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: number | null = null;
+
+  return function (...args: Parameters<T>): void {
+    const later = () => {
+      timeout = null;
+      func(...args);
+    };
+
+    if (timeout !== null) {
+      clearTimeout(timeout);
+    }
+    timeout = window.setTimeout(later, wait) as unknown as number;
+  };
+}
+
 // Reusable component interfaces
 interface ParamRowProps {
   param: Param;
@@ -214,15 +234,23 @@ const createNumberInput = (
     "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
   numberInput.value = value;
 
-  // Add input event listener to catch all changes
-  numberInput.addEventListener("input", (e) => {
-    const newValue = (e.target as HTMLInputElement).value;
+  // Create debounced version of the change handler
+  const debouncedOnChange = debounce((newValue: string) => {
     console.log(`Number input changed to: ${newValue}`);
     onChange(newValue);
+  }, 150);
+
+  // Add input event listener with debounce
+  numberInput.addEventListener("input", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    debouncedOnChange(newValue);
   });
 
-  // Keep onchange for compatibility
-  numberInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
+  // Keep onchange for compatibility but also debounce it
+  numberInput.addEventListener("change", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    debouncedOnChange(newValue);
+  });
 
   return numberInput;
 };
@@ -251,15 +279,23 @@ const createDateInput = (
     dateInput.value = value;
   }
 
-  // Add input event listener to catch all changes
-  dateInput.addEventListener("input", (e) => {
-    const newValue = (e.target as HTMLInputElement).value;
+  // Create debounced version of the change handler
+  const debouncedOnChange = debounce((newValue: string) => {
     console.log(`Date input changed to: ${newValue}`);
     onChange(newValue);
+  }, 150);
+
+  // Add input event listener with debounce
+  dateInput.addEventListener("input", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    debouncedOnChange(newValue);
   });
 
-  // Keep onchange for compatibility
-  dateInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
+  // Keep onchange for compatibility but also debounce it
+  dateInput.addEventListener("change", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    debouncedOnChange(newValue);
+  });
 
   return dateInput;
 };
@@ -274,15 +310,23 @@ const createTextInput = (
     "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
   textInput.value = value;
 
-  // Add input event listener to catch all changes
-  textInput.addEventListener("input", (e) => {
-    const newValue = (e.target as HTMLInputElement).value;
+  // Create debounced version of the change handler
+  const debouncedOnChange = debounce((newValue: string) => {
     console.log(`Text input changed to: ${newValue}`);
     onChange(newValue);
+  }, 150);
+
+  // Add input event listener with debounce
+  textInput.addEventListener("input", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    debouncedOnChange(newValue);
   });
 
-  // Keep onchange for compatibility
-  textInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
+  // Keep onchange for compatibility but also debounce it
+  textInput.addEventListener("change", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    debouncedOnChange(newValue);
+  });
 
   return textInput;
 };
@@ -1135,18 +1179,25 @@ class ParamsEditor {
   private updateParamValue(index: number, value: string) {
     this.hideError(); // Clear any errors when user makes changes
     if (index >= 0 && index < this.currentParams.length) {
-      console.log(
-        `Updating param at index ${index}: value changed to "${value}"`
-      );
       this.currentParams[index].value = value;
-      this.currentParams[index].type = this.detectParamType(value);
+      // Debounce type detection to avoid excessive processing during typing
+      this.debouncedUpdateParamType(index, value);
     }
   }
+
+  // Debounced method to update parameter type
+  private debouncedUpdateParamType = debounce(
+    (index: number, value: string) => {
+      if (index >= 0 && index < this.currentParams.length) {
+        this.currentParams[index].type = this.detectParamType(value);
+      }
+    },
+    300
+  );
 
   private updateParamKey(index: number, key: string) {
     this.hideError(); // Clear any errors when user makes changes
     if (index >= 0 && index < this.currentParams.length) {
-      console.log(`Updating param at index ${index}: key changed to "${key}"`);
       this.currentParams[index].key = key;
     }
   }
