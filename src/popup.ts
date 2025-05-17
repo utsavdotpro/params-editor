@@ -106,6 +106,7 @@ const addApplyOnEnterHandler = (input: HTMLElement) => {
         if (paramsEditor && typeof paramsEditor.applyChanges === "function") {
           // Prevent default form submission behavior
           e.preventDefault();
+
           // Apply changes through the editor instance which will show the spinner
           paramsEditor.applyChanges();
         }
@@ -967,6 +968,8 @@ class ParamsEditor {
   private originalUrl: string = "";
   private currentParams: Param[] = [];
   private originalParams: Param[] = [];
+  private searchTerm: string = "";
+  private cachedUnfilteredFragment: DocumentFragment | null = null; // Cache for unfiltered view
 
   constructor() {
     console.log("ParamsEditor initialized");
@@ -1021,6 +1024,8 @@ class ParamsEditor {
       "applyBtn",
       "resetBtn",
       "refreshBtn",
+      "searchParams",
+      "clearSearchBtn",
     ];
 
     const missingElements = requiredElements.filter(
@@ -1359,25 +1364,82 @@ class ParamsEditor {
     // Update params count
     this.updateParamsCount();
 
+    // If no search term and we have a valid cached fragment, use it
+    if (!this.searchTerm && this.cachedUnfilteredFragment) {
+      console.log("Using cached fragment");
+
+      try {
+        // Use a safer approach - manually clone and append each row
+        // Get a list of all cached rows first
+        const cachedRows = Array.from(this.cachedUnfilteredFragment.childNodes);
+        console.log(`Found ${cachedRows.length} cached rows`);
+
+        if (cachedRows.length > 0) {
+          // Clear the current table body
+          paramsBody.innerHTML = "";
+
+          // Create a new temporary fragment for the cloned rows
+          const tempFragment = document.createDocumentFragment();
+
+          // Clone each row and add to the temporary fragment
+          cachedRows.forEach((row) => {
+            tempFragment.appendChild(row.cloneNode(true));
+          });
+
+          // Append the fragment to the DOM
+          paramsBody.appendChild(tempFragment);
+          console.log("Successfully restored from cache");
+          return;
+        } else {
+          console.log("Cache exists but has no rows - rebuilding");
+          this.cachedUnfilteredFragment = null;
+        }
+      } catch (error) {
+        console.error("Error restoring from cache:", error);
+        // Fall through to regular rendering on error
+        this.cachedUnfilteredFragment = null;
+      }
+    } else {
+      console.log(
+        `Not using cache. Search: "${this.searchTerm}", Cache exists: ${this.cachedUnfilteredFragment !== null}`
+      );
+    }
+
     // Create a document fragment to build DOM changes in memory
     const fragment = document.createDocumentFragment();
 
+    // Filter parameters based on search term
+    const filteredParams = this.searchTerm
+      ? this.currentParams.filter(
+          (param) =>
+            param.key.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+            param.value.toLowerCase().includes(this.searchTerm.toLowerCase())
+        )
+      : this.currentParams;
+
     // Early return if no parameters
-    if (this.currentParams.length === 0) {
+    if (filteredParams.length === 0) {
       const emptyRow = document.createElement("tr");
       const emptyCell = document.createElement("td");
       emptyCell.colSpan = 3;
       emptyCell.className = "p-4 text-center text-gray-500 italic";
-      emptyCell.textContent = "No parameters. Add one below.";
+
+      // Change message based on whether we're searching
+      if (this.searchTerm && this.currentParams.length > 0) {
+        emptyCell.textContent = `No parameters matching "${this.searchTerm}".`;
+      } else {
+        emptyCell.textContent = "No parameters. Add one below.";
+      }
+
       emptyRow.appendChild(emptyCell);
       fragment.appendChild(emptyRow);
     } else {
       // Render each parameter
-      this.currentParams.forEach((param, index) => {
+      filteredParams.forEach((param, index) => {
         try {
           const row = createParamRow({
             param,
-            index,
+            index: this.currentParams.indexOf(param),
             onKeyChange: this.updateParamKey.bind(this),
             onValueChange: this.updateParamValue.bind(this),
             onRemove: this.removeParam.bind(this),
@@ -1394,6 +1456,51 @@ class ParamsEditor {
 
     // Append the fragment to the DOM (single reflow/repaint)
     paramsBody.appendChild(fragment);
+
+    // Cache the unfiltered fragment for future use - ONLY DO THIS WHEN NOT SEARCHING
+    if (!this.searchTerm && this.currentParams.length > 0) {
+      console.log("Building new cache");
+
+      // We need to create a proper deep clone including all rows
+      // Instead of cloning the fragment (which might not capture all DOM elements properly),
+      // let's create a new fragment with cloned rows
+      const newFragment = document.createDocumentFragment();
+
+      // Copy all the rows from the current table
+      const rows = paramsBody.querySelectorAll("tr");
+      if (rows.length > 0) {
+        // Make sure we have the expected number of rows
+        if (rows.length !== this.currentParams.length) {
+          console.warn(
+            `Row count mismatch: DOM has ${rows.length} rows but params array has ${this.currentParams.length} items. Cache may be incomplete.`
+          );
+        }
+
+        // Clone each row and add it to the fragment
+        rows.forEach((row) => {
+          newFragment.appendChild(row.cloneNode(true));
+        });
+
+        // Validate the new fragment
+        if (newFragment.childNodes.length === rows.length) {
+          // Set the cache only after we've built it completely and validated it
+          this.cachedUnfilteredFragment = newFragment;
+          console.log(`Cache created with ${rows.length} rows`);
+        } else {
+          console.error(
+            "Failed to create complete cache - fragment node count mismatch"
+          );
+        }
+      } else {
+        console.log("No rows to cache");
+      }
+    }
+  }
+
+  // Helper method to get a version identifier for the parameters state
+  private getParamsVersion(): number {
+    // Simple hash function to represent current params state
+    return this.currentParams.length;
   }
 
   private updateParamValue(index: number, value: string) {
@@ -1402,6 +1509,8 @@ class ParamsEditor {
       this.currentParams[index].value = value;
       // Debounce type detection to avoid excessive processing during typing
       this.debouncedUpdateParamType(index, value);
+      // Invalidate cache when params change
+      this.cachedUnfilteredFragment = null;
     }
   }
 
@@ -1419,12 +1528,16 @@ class ParamsEditor {
     this.hideError(); // Clear any errors when user makes changes
     if (index >= 0 && index < this.currentParams.length) {
       this.currentParams[index].key = key;
+      // Invalidate cache when params change
+      this.cachedUnfilteredFragment = null;
     }
   }
 
   private removeParam(index: number) {
     if (index >= 0 && index < this.currentParams.length) {
       this.currentParams.splice(index, 1);
+      // Invalidate cache when params change
+      this.cachedUnfilteredFragment = null;
       this.renderParams();
     }
   }
@@ -1432,7 +1545,18 @@ class ParamsEditor {
   private updateParamsCount() {
     const paramsCount = document.getElementById("paramsCount");
     if (paramsCount) {
-      paramsCount.textContent = this.currentParams.length.toString();
+      if (this.searchTerm) {
+        // When filtering, show filtered/total count
+        const filteredCount = this.currentParams.filter(
+          (param) =>
+            param.key.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+            param.value.toLowerCase().includes(this.searchTerm.toLowerCase())
+        ).length;
+        paramsCount.textContent = `${filteredCount}/${this.currentParams.length}`;
+      } else {
+        // Normal count when not filtering
+        paramsCount.textContent = this.currentParams.length.toString();
+      }
     }
   }
 
@@ -1466,6 +1590,8 @@ class ParamsEditor {
           this.currentParams.push(newParam);
         }
 
+        // Invalidate cache when params change
+        this.cachedUnfilteredFragment = null;
         this.renderParams();
 
         // Clear inputs
@@ -1540,14 +1666,6 @@ class ParamsEditor {
         // If we have a key in the input field, add it before applying changes
         this.addNewParam();
       }
-
-      // Force the UI to completely render the current params
-      // This ensures any pending changes are reflected in the URL
-      this.renderParams();
-
-      // This small delay ensures the DOM has processed all pending changes
-      // before we attempt to build the URL
-      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // Validate parameters before applying changes
       const invalidParams = this.currentParams.filter(
@@ -1642,6 +1760,8 @@ class ParamsEditor {
             this.originalParams = this.currentParams.map((param) => ({
               ...param,
             }));
+            // Invalidate cache when params are committed
+            this.cachedUnfilteredFragment = null;
             this.updateParamsCount();
             resolve();
           }
@@ -1663,6 +1783,8 @@ class ParamsEditor {
   private resetChanges() {
     this.hideError(); // Clear any errors when resetting
     this.currentParams = [...this.originalParams];
+    // Invalidate cache when params change
+    this.cachedUnfilteredFragment = null;
     this.renderParams();
     this.updateParamsCount();
   }
@@ -1688,6 +1810,33 @@ class ParamsEditor {
 
     this.attachEventListener("resetBtn", "click", () => {
       this.resetChanges();
+    });
+
+    // Add event listener for search input
+    const searchInput = document.getElementById(
+      "searchParams"
+    ) as HTMLInputElement;
+    if (searchInput) {
+      // Use input event with debounce for real-time filtering
+      const debouncedSearch = debounce((e: Event) => {
+        const value = (e.target as HTMLInputElement).value;
+        this.handleSearch(value);
+      }, 150);
+
+      searchInput.addEventListener("input", debouncedSearch);
+
+      // Also handle Enter key for immediate search
+      searchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          this.handleSearch((e.target as HTMLInputElement).value);
+        }
+      });
+    }
+
+    // Add event listener for clear search button
+    this.attachEventListener("clearSearchBtn", "click", () => {
+      this.clearSearch();
     });
 
     // Add event listeners to clear errors when user interacts with inputs
@@ -1742,6 +1891,51 @@ class ParamsEditor {
     const errorContainer = document.getElementById("errorContainer");
     if (errorContainer) {
       errorContainer.classList.add("hidden");
+    }
+  }
+
+  // Add a method to handle the search functionality
+  private handleSearch(searchText: string) {
+    const oldSearchTerm = this.searchTerm;
+    this.searchTerm = searchText.trim();
+
+    console.log(
+      `Search changed from "${oldSearchTerm}" to "${this.searchTerm}"`
+    );
+    console.log(`Cache exists: ${this.cachedUnfilteredFragment !== null}`);
+
+    // Show/hide clear button based on search term
+    const clearBtn = document.getElementById("clearSearchBtn");
+    if (clearBtn) {
+      if (this.searchTerm) {
+        clearBtn.classList.remove("hidden");
+      } else {
+        clearBtn.classList.add("hidden");
+      }
+    }
+
+    // Re-render the parameters to apply filter
+    this.renderParams();
+  }
+
+  // Add a method to clear the search
+  private clearSearch() {
+    console.log("Clear search called");
+    const searchInput = document.getElementById(
+      "searchParams"
+    ) as HTMLInputElement;
+
+    if (searchInput) {
+      // First set the input value to empty
+      searchInput.value = "";
+
+      // Then call handleSearch with empty string
+      // This should trigger the cache restoration if available
+      console.log("Calling handleSearch with empty string");
+      this.handleSearch("");
+
+      // Focus the search input after clearing
+      searchInput.focus();
     }
   }
 }

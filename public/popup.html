@@ -25,6 +25,35 @@
             alt="Refresh"
           />
         </div>
+
+        <!-- Search box -->
+        <div
+          class="flex items-center border border-gray-300 rounded overflow-hidden"
+        >
+          <div class="px-2 text-gray-500">
+            <img
+              src="https://unpkg.com/lucide-static@latest/icons/search.svg"
+              class="w-4 h-4 align-text-bottom stroke-current fill-none"
+              alt="Search"
+            />
+          </div>
+          <input
+            type="text"
+            id="searchParams"
+            placeholder="Search parameters..."
+            class="py-1.5 px-1 w-full border-none outline-none text-sm"
+          />
+          <button
+            id="clearSearchBtn"
+            class="px-2 text-gray-500 hidden hover:text-gray-700"
+          >
+            <img
+              src="https://unpkg.com/lucide-static@latest/icons/x.svg"
+              class="w-4 h-4 align-text-bottom stroke-current fill-none"
+              alt="Clear"
+            />
+          </button>
+        </div>
       </div>
 
       <div class="overflow-y-auto">
