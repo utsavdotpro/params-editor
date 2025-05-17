@@ -609,7 +609,95 @@ const createListInput = (
   return container;
 };
 
-// New component for JSON input
+// New utility for efficient JSON operations
+const jsonUtils = {
+  // Safely parse JSON with error handling
+  tryParse(value: string): { valid: boolean; parsed?: any } {
+    try {
+      const parsed = JSON.parse(value);
+      return { valid: true, parsed };
+    } catch (e) {
+      return { valid: false };
+    }
+  },
+
+  // Create an abbreviated preview of JSON data efficiently
+  createPreview(value: string, maxLength: number = 100): string {
+    // For very large values, avoid full parsing
+    if (value.length > 10000) {
+      // Just take the first part of the string for extremely large values
+      return value.substring(0, maxLength) + "...";
+    }
+
+    const result = this.tryParse(value);
+    if (result.valid) {
+      try {
+        // For large objects, use a faster approach than full stringify
+        if (value.length > 1000) {
+          // Extract just the first few keys or array elements
+          return this.createFastPreview(result.parsed, maxLength);
+        } else {
+          // For smaller objects, use pretty print
+          const preview = JSON.stringify(result.parsed, null, 2).substring(
+            0,
+            maxLength
+          );
+          return preview + (preview.length < value.length ? "..." : "");
+        }
+      } catch (e) {
+        // Fallback if any error during formatting
+        return (
+          value.substring(0, maxLength) +
+          (value.length > maxLength ? "..." : "")
+        );
+      }
+    } else {
+      // Not valid JSON, just return truncated string
+      return (
+        value.substring(0, maxLength) + (value.length > maxLength ? "..." : "")
+      );
+    }
+  },
+
+  // Create a preview without full stringification for large objects
+  createFastPreview(parsed: any, maxLength: number): string {
+    if (Array.isArray(parsed)) {
+      // For arrays, just show first few items
+      const items = parsed.slice(0, 3).map((item) => {
+        if (typeof item === "object" && item !== null) {
+          return typeof item === "object"
+            ? Array.isArray(item)
+              ? "[...]"
+              : "{...}"
+            : String(item);
+        }
+        return String(item);
+      });
+
+      return `[${items.join(", ")}${parsed.length > 3 ? ", ..." : ""}]`;
+    } else if (typeof parsed === "object" && parsed !== null) {
+      // For objects, show first few properties
+      const keys = Object.keys(parsed).slice(0, 3);
+      const parts = keys.map((key) => {
+        const val = parsed[key];
+        const valStr =
+          typeof val === "object" && val !== null
+            ? Array.isArray(val)
+              ? "[...]"
+              : "{...}"
+            : String(val).substring(0, 15);
+        return `"${key}": ${valStr}`;
+      });
+
+      return `{${parts.join(", ")}${Object.keys(parsed).length > 3 ? ", ..." : ""}}`;
+    }
+
+    // Fallback for primitive values
+    return String(parsed);
+  },
+};
+
+// Updated JSON input component with optimized handling
 const createJsonInput = (
   value: string,
   onChange: (value: string) => void,
@@ -623,10 +711,8 @@ const createJsonInput = (
   try {
     if (value.includes("%")) {
       decodedValue = decodeURIComponent(value);
-      console.log(`JSON Input - Decoded:`, decodedValue);
     }
   } catch (e) {
-    console.log(`JSON Input - Decoding failed:`, e);
     decodedValue = value;
   }
 
@@ -636,20 +722,11 @@ const createJsonInput = (
 
   const previewText = document.createElement("code");
   previewText.className =
-    "text-xs text-gray-600 truncate block w-[90%] overflow-hidden text-ellipsis"; // Better overflow handling
-  try {
-    // Try to parse and prettify, fallback to raw value
-    const parsed = JSON.parse(decodedValue);
-    previewText.textContent = JSON.stringify(parsed, null, 2).substring(0, 100);
-    if (JSON.stringify(parsed).length > 100) {
-      previewText.textContent += "...";
-    }
-  } catch {
-    previewText.textContent = decodedValue.substring(0, 100);
-    if (decodedValue.length > 100) {
-      previewText.textContent += "...";
-    }
-  }
+    "text-xs text-gray-600 truncate block w-[90%] overflow-hidden text-ellipsis";
+
+  // Use optimized JSON preview utility
+  previewText.textContent = jsonUtils.createPreview(decodedValue);
+
   previewContainer.appendChild(previewText);
 
   const editIcon = createIcon("pencil", "Edit JSON");
@@ -658,76 +735,104 @@ const createJsonInput = (
 
   container.appendChild(previewContainer);
 
-  // Create textarea for JSON editing
-  const textarea = document.createElement("textarea");
-  textarea.className =
-    "w-full min-h-32 h-64 max-h-full p-2 border border-gray-300 rounded focus:outline-none focus:border-green-500 font-mono text-sm";
-  textarea.placeholder = "Enter valid JSON here...";
+  // Lazy initialization of textarea - only create when needed
+  let textarea: HTMLTextAreaElement | null = null;
+  let modalInitialized = false;
+  let modal: {
+    showModal: () => void;
+    hideModal: () => void;
+    cleanup: () => void;
+  } | null = null;
 
-  // Create error message element
-  const errorMsg = document.createElement("div");
-  errorMsg.className = "text-red-600 text-xs mr-auto hidden";
+  // Function to initialize the modal only when needed
+  const initializeModal = () => {
+    if (modalInitialized) return;
 
-  // Create modal with reusable component
-  const { showModal, hideModal, cleanup } = createModal({
-    title: `Edit ${paramKey}`,
-    bodyContent: textarea,
-    errorMsg: errorMsg,
-    onSave: () => {
-      try {
-        const newValue = textarea.value;
-        JSON.parse(newValue); // Validate JSON
-        console.log(`JSON value changed for ${paramKey}`, newValue);
-        onChange(newValue); // Pass the raw (but validated) string back - keep it decoded
+    textarea = document.createElement("textarea");
+    textarea.className =
+      "w-full min-h-32 h-64 max-h-full p-2 border border-gray-300 rounded focus:outline-none focus:border-green-500 font-mono text-sm";
+    textarea.placeholder = "Enter valid JSON here...";
 
-        // Update preview with the new decoded value
+    // Create error message element
+    const errorMsg = document.createElement("div");
+    errorMsg.className = "text-red-600 text-xs mr-auto hidden";
+
+    // Create modal with reusable component
+    modal = createModal({
+      title: `Edit ${paramKey}`,
+      bodyContent: textarea,
+      errorMsg: errorMsg,
+      onSave: () => {
+        if (!textarea) return;
         try {
-          const parsed = JSON.parse(newValue);
-          previewText.textContent = JSON.stringify(parsed, null, 2).substring(
-            0,
-            100
-          );
-          if (JSON.stringify(parsed).length > 100) {
-            previewText.textContent += "...";
+          const newValue = textarea.value;
+
+          // Use the JSON utility for validation
+          const parseResult = jsonUtils.tryParse(newValue);
+          if (!parseResult.valid) {
+            throw new Error("Invalid JSON format");
           }
-        } catch {
-          previewText.textContent = newValue.substring(0, 100);
-          if (newValue.length > 100) {
-            previewText.textContent += "...";
+
+          onChange(newValue);
+
+          // Update preview with the new value
+          previewText.textContent = jsonUtils.createPreview(newValue);
+
+          if (modal) modal.hideModal();
+          errorMsg.classList.add("hidden");
+        } catch (err) {
+          errorMsg.textContent = "Invalid JSON: " + (err as Error).message;
+          errorMsg.classList.remove("hidden");
+          if (textarea) textarea.focus();
+        }
+      },
+    });
+
+    modalInitialized = true;
+  };
+
+  // Show modal when preview is clicked - lazy initialization
+  previewContainer.onclick = () => {
+    // Initialize modal on first click
+    if (!modalInitialized) {
+      initializeModal();
+    }
+
+    if (textarea && modal) {
+      try {
+        // For large JSON, use direct assignment instead of prettification
+        if (decodedValue.length > 50000) {
+          textarea.value = decodedValue;
+        } else {
+          // Try to prettify smaller JSON values
+          const parseResult = jsonUtils.tryParse(decodedValue);
+          if (parseResult.valid) {
+            textarea.value = JSON.stringify(parseResult.parsed, null, 2);
+          } else {
+            textarea.value = decodedValue;
           }
         }
 
-        hideModal();
-        errorMsg.classList.add("hidden");
-      } catch (err) {
-        errorMsg.textContent = "Invalid JSON: " + (err as Error).message;
-        errorMsg.classList.remove("hidden");
-        textarea.focus(); // Keep focus on textarea if error
+        modal.showModal();
+        textarea.focus();
+      } catch (e) {
+        // Fallback to raw value if any error occurs
+        if (textarea) {
+          textarea.value = decodedValue;
+          modal.showModal();
+          textarea.focus();
+        }
       }
-    },
-  });
-
-  // Show modal when preview is clicked
-  previewContainer.onclick = () => {
-    try {
-      // Prettify JSON in textarea for editing
-      const parsed = JSON.parse(decodedValue);
-      textarea.value = JSON.stringify(parsed, null, 2);
-    } catch {
-      textarea.value = decodedValue; // Fallback to raw value if parsing fails
     }
-    errorMsg.classList.add("hidden"); // Clear previous errors
-    showModal();
-    textarea.focus(); // Focus textarea when modal opens
   };
 
-  // Cleanup modal when container is removed
+  // Cleanup only when container is removed
   const observer = new MutationObserver((mutationsList, obs) => {
     for (const mutation of mutationsList) {
       if (mutation.removedNodes) {
         mutation.removedNodes.forEach((node) => {
           if (node === container) {
-            cleanup();
+            if (modal) modal.cleanup();
             obs.disconnect();
             return;
           }
