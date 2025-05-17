@@ -1307,7 +1307,38 @@ class ParamsEditor {
     return "string";
   }
 
+  // Supported date formats examples:
+  // - ISO 8601: "2023-05-15", "2023-05-15T14:30:00Z"
+  // - US format: "05/15/2023", "5/15/2023"
+  // - European format: "15.05.2023", "15/05/2023"
+  // - Month name: "May 15, 2023", "15 May 2023"
+  // - Month abbreviation: "15-May-2023", "May-15-2023"
+  // - Relative: "yesterday", "today", "tomorrow"
+  // Not supported:
+  // - Multiple words with spaces: "as as ss"
+  // - ID formats: "KEY-123"
+  // - General strings with letters not referring to months
   private isValidDate(dateString: string): boolean {
+    // Skip strings that are clearly not dates
+    // Skip strings with alphabetic characters except for month names
+    if (
+      /[a-zA-Z]/.test(dateString) &&
+      !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(dateString)
+    ) {
+      return false;
+    }
+
+    // Skip strings in the format like "KEY-123"
+    if (/^[A-Z]+-\d+$/i.test(dateString)) {
+      return false;
+    }
+
+    // Skip strings that are just multiple words with spaces
+    if (/^\w+\s+\w+\s+\w+$/.test(dateString)) {
+      return false;
+    }
+
+    // Continue with standard date validation
     const date = new Date(dateString);
     return date instanceof Date && !isNaN(date.getTime());
   }
