@@ -42,6 +42,15 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   keyInput.className =
     "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
   keyInput.value = param.key;
+
+  // Add input event listener to catch all changes including when typing
+  keyInput.addEventListener("input", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    console.log(`Key input changed to: ${newValue}`);
+    onKeyChange(index, newValue);
+  });
+
+  // Keep onchange for compatibility
   keyInput.onchange = (e) =>
     onKeyChange(index, (e.target as HTMLInputElement).value);
 
@@ -162,8 +171,11 @@ const createBooleanInput = (
   checkbox.type = "checkbox";
   checkbox.className = "opacity-0 w-0 h-0";
   checkbox.checked = value.toLowerCase() === "true";
-  checkbox.onchange = (e) =>
-    onChange((e.target as HTMLInputElement).checked.toString());
+  checkbox.onchange = (e) => {
+    const newValue = (e.target as HTMLInputElement).checked.toString();
+    console.log(`Boolean changed to: ${newValue}`);
+    onChange(newValue);
+  };
 
   const slider = document.createElement("span");
   slider.className =
@@ -201,6 +213,15 @@ const createNumberInput = (
   numberInput.className =
     "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
   numberInput.value = value;
+
+  // Add input event listener to catch all changes
+  numberInput.addEventListener("input", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    console.log(`Number input changed to: ${newValue}`);
+    onChange(newValue);
+  });
+
+  // Keep onchange for compatibility
   numberInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
 
   return numberInput;
@@ -230,6 +251,14 @@ const createDateInput = (
     dateInput.value = value;
   }
 
+  // Add input event listener to catch all changes
+  dateInput.addEventListener("input", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    console.log(`Date input changed to: ${newValue}`);
+    onChange(newValue);
+  });
+
+  // Keep onchange for compatibility
   dateInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
 
   return dateInput;
@@ -244,6 +273,15 @@ const createTextInput = (
   textInput.className =
     "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
   textInput.value = value;
+
+  // Add input event listener to catch all changes
+  textInput.addEventListener("input", (e) => {
+    const newValue = (e.target as HTMLInputElement).value;
+    console.log(`Text input changed to: ${newValue}`);
+    onChange(newValue);
+  });
+
+  // Keep onchange for compatibility
   textInput.onchange = (e) => onChange((e.target as HTMLInputElement).value);
 
   return textInput;
@@ -372,9 +410,13 @@ const createListInput = (
           if (newValue && newValue !== itemValue) {
             // Update the value in our array
             editingValues[itemIndex] = newValue;
+            console.log(
+              `List item edited: from "${itemValue}" to "${newValue}"`
+            );
             renderSelectedItems();
           } else if (!newValue) {
             // Remove item if edited to empty
+            console.log(`List item removed: "${itemValue}"`);
             editingValues.splice(itemIndex, 1);
             renderSelectedItems();
           } else {
@@ -591,6 +633,7 @@ const createJsonInput = (
       try {
         const newValue = textarea.value;
         JSON.parse(newValue); // Validate JSON
+        console.log(`JSON value changed for ${paramKey}`, newValue);
         onChange(newValue); // Pass the raw (but validated) string back - keep it decoded
 
         // Update preview with the new decoded value
@@ -815,6 +858,9 @@ class ParamsEditor {
     if (applyBtn) {
       applyBtn.textContent = "Apply";
     }
+
+    // Hide any errors on startup
+    this.hideError();
   }
 
   private checkRequiredElements() {
@@ -839,6 +885,7 @@ class ParamsEditor {
 
   private async loadCurrentUrl() {
     console.log("Loading current URL");
+    this.hideError(); // Clear any previous errors
     try {
       // Get current URL from background script
       const response = await chrome.runtime.sendMessage({
@@ -851,9 +898,14 @@ class ParamsEditor {
         this.parseAndDisplayParams();
       } else {
         console.error("Failed to get current URL");
+        this.showError("Failed to get current URL from tab");
       }
     } catch (error) {
       console.error("Error loading current URL:", error);
+      this.showError(
+        "Error loading current URL: " +
+          (error instanceof Error ? error.message : String(error))
+      );
     }
   }
 
@@ -1093,14 +1145,20 @@ class ParamsEditor {
   }
 
   private updateParamValue(index: number, value: string) {
+    this.hideError(); // Clear any errors when user makes changes
     if (index >= 0 && index < this.currentParams.length) {
+      console.log(
+        `Updating param at index ${index}: value changed to "${value}"`
+      );
       this.currentParams[index].value = value;
       this.currentParams[index].type = this.detectParamType(value);
     }
   }
 
   private updateParamKey(index: number, key: string) {
+    this.hideError(); // Clear any errors when user makes changes
     if (index >= 0 && index < this.currentParams.length) {
+      console.log(`Updating param at index ${index}: key changed to "${key}"`);
       this.currentParams[index].key = key;
     }
   }
@@ -1120,6 +1178,7 @@ class ParamsEditor {
   }
 
   private addNewParam() {
+    this.hideError(); // Clear any errors when user makes changes
     const keyInput = document.getElementById("newParamKey") as HTMLInputElement;
     const valueInput = document.getElementById(
       "newParamValue"
@@ -1156,7 +1215,7 @@ class ParamsEditor {
         keyInput.focus();
       } else {
         // Show error for empty key
-        alert("Parameter key cannot be empty");
+        this.showError("Parameter key cannot be empty");
         keyInput.focus();
       }
     }
@@ -1203,7 +1262,10 @@ class ParamsEditor {
   }
 
   private async applyChanges() {
-    // Show spinner for 1 second
+    // Clear any existing errors before starting
+    this.hideError();
+
+    // Show spinner for visual feedback
     this.showApplySpinner();
 
     try {
@@ -1220,17 +1282,42 @@ class ParamsEditor {
         this.addNewParam();
       }
 
+      // Force the UI to completely render the current params
+      // This ensures any pending changes are reflected in the URL
+      this.renderParams();
+
+      // This small delay ensures the DOM has processed all pending changes
+      // before we attempt to build the URL
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Dump the current state of all param values for debugging
+      console.log("FINAL PARAMS STATE BEFORE APPLY:");
+      this.currentParams.forEach((param, idx) => {
+        console.log(
+          `Param[${idx}]: key=${param.key}, value=${param.value}, type=${param.type}`
+        );
+      });
+
       // Validate parameters before applying changes
       const invalidParams = this.currentParams.filter(
         (param) => !param.key.trim()
       );
       if (invalidParams.length > 0) {
-        throw new Error(
+        this.showError(
           `Cannot apply changes: ${invalidParams.length} parameter(s) have empty keys`
         );
+        this.hideApplySpinner();
+        return;
       }
 
+      console.log(
+        "Current params before building URL:",
+        JSON.stringify(this.currentParams, null, 2)
+      );
+
       const url = new URL(this.originalUrl);
+
+      // Clear all existing search parameters
       url.search = "";
 
       // Create a new URLSearchParams object for better control
@@ -1240,47 +1327,93 @@ class ParamsEditor {
       this.currentParams.forEach((param) => {
         if (param.key.trim()) {
           // Extra validation to ensure we don't add empty keys
+          console.log(
+            `Adding param to searchParams: ${param.key}=${param.value}`
+          );
           searchParams.append(param.key, param.value);
         }
       });
 
-      // Set the search property directly from the URLSearchParams object
-      url.search = searchParams.toString();
+      // Log the search params to verify what's being added
+      console.log("URLSearchParams:", searchParams.toString());
+
+      // Build a clean, properly encoded URL
+      const paramString = searchParams.toString();
+      if (paramString) {
+        url.search = "?" + paramString;
+      }
 
       const newUrl = url.toString();
+      console.log("New URL to apply:", newUrl);
 
-      // Send message to background script to update URL
-      const response = await chrome.runtime.sendMessage({
-        type: "UPDATE_URL",
-        url: newUrl,
+      // Also log the difference between original and new URL
+      console.log("Original URL:", this.originalUrl);
+      if (newUrl === this.originalUrl) {
+        console.warn("WARNING: New URL is identical to original URL!");
+      }
+
+      // Create a timeout to handle cases where the background script doesn't respond
+      const timeoutPromise = new Promise<void>((_, reject) => {
+        setTimeout(() => {
+          reject(
+            new Error(
+              "Timeout: No response from background script after 5 seconds"
+            )
+          );
+        }, 5000);
       });
 
-      if (response && response.error) {
-        throw new Error(`Background script error: ${response.error}`);
-      }
+      // Send message to background script to update URL
+      const messagePromise = new Promise<void>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          {
+            type: "UPDATE_URL",
+            url: newUrl,
+          },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              reject(
+                new Error(`Chrome error: ${chrome.runtime.lastError.message}`)
+              );
+              return;
+            }
 
-      // Update local state
-      this.originalUrl = newUrl;
-      this.updateUrlDisplay();
+            if (!response) {
+              reject(new Error("No response from background script"));
+              return;
+            }
 
-      // Create a deep copy of current params to avoid reference issues
-      this.originalParams = this.currentParams.map((param) => ({ ...param }));
+            if (response.error) {
+              reject(new Error(response.error));
+              return;
+            }
 
-      // Update params count
-      this.updateParamsCount();
+            // Update local state on success
+            this.originalUrl = newUrl;
+            this.updateUrlDisplay();
+            this.originalParams = this.currentParams.map((param) => ({
+              ...param,
+            }));
+            this.updateParamsCount();
+            resolve();
+          }
+        );
+      });
+
+      // Race the message promise against the timeout
+      await Promise.race([messagePromise, timeoutPromise]);
+      this.hideApplySpinner();
     } catch (error) {
       console.error("Error applying changes:", error);
-
-      // Show a simplified error message to the user
-      if (error instanceof Error) {
-        alert(error.message);
-      } else {
-        alert("Failed to apply changes");
-      }
+      this.showError(
+        error instanceof Error ? error.message : "Failed to apply changes"
+      );
+      this.hideApplySpinner();
     }
   }
 
   private resetChanges() {
+    this.hideError(); // Clear any errors when resetting
     this.currentParams = [...this.originalParams];
     this.renderParams();
     this.updateParamsCount();
@@ -1308,6 +1441,18 @@ class ParamsEditor {
     this.attachEventListener("resetBtn", "click", () => {
       this.resetChanges();
     });
+
+    // Add event listeners to clear errors when user interacts with inputs
+    const keyInput = document.getElementById("newParamKey");
+    const valueInput = document.getElementById("newParamValue");
+
+    if (keyInput) {
+      keyInput.addEventListener("input", () => this.hideError());
+    }
+
+    if (valueInput) {
+      valueInput.addEventListener("input", () => this.hideError());
+    }
   }
 
   private attachEventListener(
@@ -1325,6 +1470,30 @@ class ParamsEditor {
       console.error(
         `Failed to attach event listener: element #${elementId} not found`
       );
+    }
+  }
+
+  // Function to show an error message to the user
+  private showError(message: string): void {
+    const errorContainer = document.getElementById("errorContainer");
+    const errorMessage = document.getElementById("errorMessage");
+
+    if (errorContainer && errorMessage) {
+      errorMessage.textContent = message;
+      errorContainer.classList.remove("hidden");
+      // Scroll into view if needed
+      errorContainer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else {
+      // Fallback to console if error elements don't exist
+      console.error("Error:", message);
+    }
+  }
+
+  // Function to hide error message
+  private hideError(): void {
+    const errorContainer = document.getElementById("errorContainer");
+    if (errorContainer) {
+      errorContainer.classList.add("hidden");
     }
   }
 }
