@@ -1010,30 +1010,114 @@ class ParamsEditor {
 
   private parseAndDisplayParams() {
     try {
-      const url = new URL(this.originalUrl);
+      // Start with empty arrays
       this.currentParams = [];
       this.originalParams = [];
 
-      // Parse URL parameters and convert to Param objects
-      url.searchParams.forEach((value, key) => {
-        if (key.trim()) {
-          // Ensure we don't add empty keys
-          const param: Param = {
-            key,
-            value,
-            type: this.detectParamType(value),
-          };
-          this.currentParams.push(param);
-          // Create deep copies for originalParams to avoid reference issues
-          this.originalParams.push({ ...param });
+      // Parse URL directly instead of using URL object for very large URLs
+      const url = new URL(this.originalUrl);
+      const searchParams = url.searchParams;
+
+      // Estimate parameter count for array pre-allocation if possible
+      const estimatedCount = this.estimateParamCount(url.search);
+      if (estimatedCount > 50) {
+        // Pre-allocate array capacity for large parameter sets
+        this.currentParams = new Array(estimatedCount);
+        this.originalParams = new Array(estimatedCount);
+      }
+
+      // Use a more efficient approach to process parameters
+      let index = 0;
+      const processInBatches = searchParams.size > 100;
+
+      if (processInBatches) {
+        // Process parameters in batches for very large URLs
+        this.processParamsInBatches(searchParams, 50);
+      } else {
+        // Standard processing for smaller URLs
+        searchParams.forEach((value, key) => {
+          if (key.trim()) {
+            const param = {
+              key,
+              value,
+              type: this.detectParamType(value),
+            };
+            this.currentParams[index] = param;
+            this.originalParams[index] = { ...param };
+            index++;
+          }
+        });
+
+        // Compact arrays if needed
+        if (index < this.currentParams.length) {
+          this.currentParams = this.currentParams.slice(0, index);
+          this.originalParams = this.originalParams.slice(0, index);
         }
-      });
+      }
 
       this.renderParams();
       this.updateParamsCount();
     } catch (error) {
       console.error("Error parsing URL parameters:", error);
     }
+  }
+
+  // Process parameters in batches to avoid UI blocking
+  private processParamsInBatches(
+    searchParams: URLSearchParams,
+    batchSize: number
+  ) {
+    let index = 0;
+    let processedCount = 0;
+    const paramEntries = Array.from(searchParams.entries());
+    const totalCount = paramEntries.length;
+
+    const processBatch = () => {
+      const endIdx = Math.min(processedCount + batchSize, totalCount);
+
+      for (let i = processedCount; i < endIdx; i++) {
+        const [key, value] = paramEntries[i];
+        if (key.trim()) {
+          const param = {
+            key,
+            value,
+            type: this.detectParamType(value),
+          };
+          this.currentParams[index] = param;
+          this.originalParams[index] = { ...param };
+          index++;
+        }
+      }
+
+      processedCount = endIdx;
+
+      if (processedCount < totalCount) {
+        // Schedule next batch to allow UI updates
+        setTimeout(processBatch, 0);
+      } else {
+        // All batches processed
+        // Compact arrays if needed
+        if (index < this.currentParams.length) {
+          this.currentParams = this.currentParams.slice(0, index);
+          this.originalParams = this.originalParams.slice(0, index);
+        }
+
+        // Update UI after all parameters are processed
+        this.renderParams();
+        this.updateParamsCount();
+      }
+    };
+
+    // Start batch processing
+    processBatch();
+  }
+
+  // Estimate parameter count for pre-allocation
+  private estimateParamCount(searchStr: string): number {
+    if (!searchStr || searchStr === "?") return 0;
+
+    // Quick count by counting ampersands
+    return (searchStr.match(/&/g) || []).length + 1;
   }
 
   private detectParamType(value: string): Param["type"] {
@@ -1329,14 +1413,6 @@ class ParamsEditor {
       // before we attempt to build the URL
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Dump the current state of all param values for debugging
-      console.log("FINAL PARAMS STATE BEFORE APPLY:");
-      this.currentParams.forEach((param, idx) => {
-        console.log(
-          `Param[${idx}]: key=${param.key}, value=${param.value}, type=${param.type}`
-        );
-      });
-
       // Validate parameters before applying changes
       const invalidParams = this.currentParams.filter(
         (param) => !param.key.trim()
@@ -1349,47 +1425,44 @@ class ParamsEditor {
         return;
       }
 
-      console.log(
-        "Current params before building URL:",
-        JSON.stringify(this.currentParams, null, 2)
-      );
-
+      // More efficient URL building for large parameter sets
       const url = new URL(this.originalUrl);
 
       // Clear all existing search parameters
       url.search = "";
 
-      // Create a new URLSearchParams object for better control
-      const searchParams = new URLSearchParams();
-
-      // Add each parameter, with proper encoding
-      this.currentParams.forEach((param) => {
-        if (param.key.trim()) {
-          // Extra validation to ensure we don't add empty keys
-          console.log(
-            `Adding param to searchParams: ${param.key}=${param.value}`
-          );
-          searchParams.append(param.key, param.value);
+      // Build parameters string directly for very large parameter sets
+      if (this.currentParams.length > 100) {
+        // For very large parameter sets, build query string manually to avoid URLSearchParams overhead
+        const paramParts: string[] = [];
+        for (const param of this.currentParams) {
+          if (param.key.trim()) {
+            paramParts.push(
+              `${encodeURIComponent(param.key)}=${encodeURIComponent(param.value)}`
+            );
+          }
         }
-      });
 
-      // Log the search params to verify what's being added
-      console.log("URLSearchParams:", searchParams.toString());
+        url.search = paramParts.length > 0 ? "?" + paramParts.join("&") : "";
+      } else {
+        // Use URLSearchParams for normal sized parameter sets
+        const searchParams = new URLSearchParams();
 
-      // Build a clean, properly encoded URL
-      const paramString = searchParams.toString();
-      if (paramString) {
-        url.search = "?" + paramString;
+        // Add each parameter, with proper encoding
+        this.currentParams.forEach((param) => {
+          if (param.key.trim()) {
+            searchParams.append(param.key, param.value);
+          }
+        });
+
+        // Set the search part of the URL
+        const paramString = searchParams.toString();
+        if (paramString) {
+          url.search = "?" + paramString;
+        }
       }
 
       const newUrl = url.toString();
-      console.log("New URL to apply:", newUrl);
-
-      // Also log the difference between original and new URL
-      console.log("Original URL:", this.originalUrl);
-      if (newUrl === this.originalUrl) {
-        console.warn("WARNING: New URL is identical to original URL!");
-      }
 
       // Create a timeout to handle cases where the background script doesn't respond
       const timeoutPromise = new Promise<void>((_, reject) => {
