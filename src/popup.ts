@@ -1359,6 +1359,18 @@ class ParamsEditor {
     const paramsTable = paramsBody.closest("table");
     if (paramsTable) {
       paramsTable.className = "w-full table-fixed";
+
+      // Get the table header
+      const tableHeader = paramsTable.querySelector("thead");
+
+      // Show/hide header based on params availability
+      if (tableHeader) {
+        if (this.currentParams.length === 0) {
+          tableHeader.classList.add("hidden");
+        } else {
+          tableHeader.classList.remove("hidden");
+        }
+      }
     }
 
     // Update params count
