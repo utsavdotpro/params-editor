@@ -993,12 +993,8 @@ class ParamsEditor {
   }
 
   private detectParamType(value: string): Param["type"] {
-    // Log the initial value received
-    console.log(`detectParamType - Input: '${value}'`);
-
     // Empty or whitespace-only values default to string
     if (!value || value.trim() === "") {
-      console.log(`detectParamType - Result: string (empty)`);
       return "string";
     }
 
@@ -1008,33 +1004,25 @@ class ParamsEditor {
       // Only decode if it contains URL-encoded characters
       if (value.includes("%")) {
         decodedValue = decodeURIComponent(value);
-        console.log(`detectParamType - Decoded: '${decodedValue}'`);
       }
     } catch (e) {
-      console.log(`detectParamType - Decoding failed: ${e}`);
       // If decoding fails, use the original value
       decodedValue = value;
     }
 
     // Trim the value for accurate detection
     const trimmedValue = decodedValue.trim();
-    console.log(`detectParamType - Trimmed: '${trimmedValue}'`);
 
     // JSON detection (Object or Array)
     if (
       (trimmedValue.startsWith("{") && trimmedValue.endsWith("}")) ||
       (trimmedValue.startsWith("[") && trimmedValue.endsWith("]"))
     ) {
-      console.log(`detectParamType - Potential JSON detected`);
       try {
         // Attempt to parse to validate JSON structure
         JSON.parse(trimmedValue);
-        console.log(`detectParamType - Result: json (validated)`);
         return "json"; // It's valid JSON
       } catch (e) {
-        console.log(
-          `detectParamType - Result: string (JSON parse failed: ${e})`
-        );
         // Parsing failed, treat as string
         return "string";
       }
@@ -1045,19 +1033,16 @@ class ParamsEditor {
       trimmedValue.toLowerCase() === "true" ||
       trimmedValue.toLowerCase() === "false"
     ) {
-      console.log(`detectParamType - Result: boolean`);
       return "boolean";
     }
 
     // Number detection - ensure it's a valid number format
     if (/^-?\d+(\.\d+)?$/.test(trimmedValue) && !isNaN(Number(trimmedValue))) {
-      console.log(`detectParamType - Result: number`);
       return "number";
     }
 
     // Date detection - try parsing with stricter validation
     if (this.isValidDate(trimmedValue)) {
-      console.log(`detectParamType - Result: date`);
       return "date";
     }
 
@@ -1080,14 +1065,12 @@ class ParamsEditor {
           .split(",")
           .some((item: string) => item.trim() !== "");
         if (hasValues) {
-          console.log(`detectParamType - Result: list`);
           return "list";
         }
       }
     }
 
     // Default to string for anything else
-    console.log(`detectParamType - Result: string (default)`);
     return "string";
   }
 
@@ -1112,8 +1095,8 @@ class ParamsEditor {
     // Update params count
     this.updateParamsCount();
 
-    // Clear the current table body
-    paramsBody.innerHTML = "";
+    // Create a document fragment to build DOM changes in memory
+    const fragment = document.createDocumentFragment();
 
     // Early return if no parameters
     if (this.currentParams.length === 0) {
@@ -1123,25 +1106,30 @@ class ParamsEditor {
       emptyCell.className = "p-4 text-center text-gray-500 italic";
       emptyCell.textContent = "No parameters. Add one below.";
       emptyRow.appendChild(emptyCell);
-      paramsBody.appendChild(emptyRow);
-      return;
+      fragment.appendChild(emptyRow);
+    } else {
+      // Render each parameter
+      this.currentParams.forEach((param, index) => {
+        try {
+          const row = createParamRow({
+            param,
+            index,
+            onKeyChange: this.updateParamKey.bind(this),
+            onValueChange: this.updateParamValue.bind(this),
+            onRemove: this.removeParam.bind(this),
+          });
+          fragment.appendChild(row);
+        } catch (error) {
+          console.error(`Error rendering parameter row ${index}:`, error);
+        }
+      });
     }
 
-    // Render each parameter
-    this.currentParams.forEach((param, index) => {
-      try {
-        const row = createParamRow({
-          param,
-          index,
-          onKeyChange: this.updateParamKey.bind(this),
-          onValueChange: this.updateParamValue.bind(this),
-          onRemove: this.removeParam.bind(this),
-        });
-        paramsBody.appendChild(row);
-      } catch (error) {
-        console.error(`Error rendering parameter row ${index}:`, error);
-      }
-    });
+    // Clear the current table body
+    paramsBody.innerHTML = "";
+
+    // Append the fragment to the DOM (single reflow/repaint)
+    paramsBody.appendChild(fragment);
   }
 
   private updateParamValue(index: number, value: string) {
