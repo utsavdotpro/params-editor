@@ -1984,6 +1984,42 @@ class ParamsEditor {
         this.resetChanges();
       }
 
+      // Ctrl/CMD + C to copy parameter
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        const activeElement = document.activeElement;
+        if (!activeElement) return;
+
+        const currentRow = activeElement.closest("tr");
+        if (!currentRow || !currentRow.parentElement?.id.includes("paramsBody"))
+          return;
+
+        const rows = Array.from(document.querySelectorAll("#paramsBody tr"));
+        const currentIndex = rows.indexOf(currentRow);
+        if (currentIndex === -1) return;
+
+        const param = this.currentParams[currentIndex];
+        if (!param) return;
+
+        let copyText: string | undefined;
+        const keyInput = currentRow.querySelector("input");
+
+        if (activeElement === keyInput) {
+          copyText = `${param.key}=${param.value}`;
+        } else {
+          const valueCell = currentRow.querySelectorAll("td")[1];
+          if (valueCell && valueCell.contains(activeElement)) {
+            copyText = param.value;
+          }
+        }
+
+        if (copyText !== undefined) {
+          e.preventDefault();
+          navigator.clipboard.writeText(copyText).catch((err) => {
+            console.error("Failed to copy text: ", err);
+          });
+        }
+      }
+
       // Ctrl/CMD + Up/Down to navigate between parameters
       if (
         (e.ctrlKey || e.metaKey) &&
