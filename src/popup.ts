@@ -1925,10 +1925,31 @@ class ParamsEditor {
     });
 
     // Add event listeners to clear errors when user interacts with inputs
-    const keyInput = document.getElementById("newParamKey");
-    const valueInput = document.getElementById("newParamValue");
+    const keyInput = document.getElementById("newParamKey") as HTMLInputElement;
+    const valueInput = document.getElementById(
+      "newParamValue"
+    ) as HTMLInputElement;
 
     if (keyInput) {
+      keyInput.addEventListener("paste", (e: ClipboardEvent) => {
+        const pastedText = e.clipboardData?.getData("text");
+        // Check if pastedText is valid and contains '='
+        if (pastedText && pastedText.includes("=")) {
+          e.preventDefault();
+
+          // Split only on the first '=' to handle values that contain '='
+          const firstEqualIndex = pastedText.indexOf("=");
+          const key = pastedText.substring(0, firstEqualIndex);
+          const value = pastedText.substring(firstEqualIndex + 1);
+
+          keyInput.value = key;
+          if (valueInput) {
+            valueInput.value = value;
+            valueInput.focus(); // Move focus to value for better UX
+          }
+        }
+        // If no '=', do nothing and let the default paste behavior occur.
+      });
       keyInput.addEventListener("input", () => this.hideMessage());
       // Add Ctrl/CMD + Enter handler for key input
       keyInput.addEventListener("keydown", (e) => {
