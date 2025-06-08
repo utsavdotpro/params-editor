@@ -1677,7 +1677,7 @@ class ParamsEditor {
         keyInput.focus();
       } else {
         // Show error for empty key
-        this.showError("Parameter key cannot be empty");
+        this.showError("Parameter key cannot be empty!");
         keyInput.focus();
       }
     }
@@ -1750,7 +1750,7 @@ class ParamsEditor {
       );
       if (invalidParams.length > 0) {
         this.showError(
-          `Cannot apply changes: ${invalidParams.length} parameter(s) have empty keys`
+          `Cannot apply changes: ${invalidParams.length} parameter(s) have empty keys!`
         );
         this.hideApplySpinner();
         return;
@@ -2085,14 +2085,14 @@ class ParamsEditor {
 
   // Function to show an error message to the user
   private showError(message: string): void {
-    const errorContainer = document.getElementById("errorContainer");
-    const errorMessage = document.getElementById("errorMessage");
+    const messageContainer = document.getElementById("messageContainer");
+    const messageText = document.getElementById("messageText");
 
-    if (errorContainer && errorMessage) {
-      errorMessage.textContent = message;
-      errorContainer.classList.remove("hidden");
+    if (messageContainer && messageText) {
+      messageText.textContent = message;
+      messageContainer.classList.remove("hidden");
       // Scroll into view if needed
-      errorContainer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      messageContainer.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } else {
       // Fallback to console if error elements don't exist
       console.error("Error:", message);
@@ -2101,9 +2101,9 @@ class ParamsEditor {
 
   // Function to hide error message
   private hideError(): void {
-    const errorContainer = document.getElementById("errorContainer");
-    if (errorContainer) {
-      errorContainer.classList.add("hidden");
+    const messageContainer = document.getElementById("messageContainer");
+    if (messageContainer) {
+      messageContainer.classList.add("hidden");
     }
   }
 
