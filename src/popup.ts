@@ -53,7 +53,6 @@ const createCell = (className: string = ""): HTMLTableCellElement => {
 const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   const { param, index, onKeyChange, onValueChange, onRemove } = props;
   const row = document.createElement("tr");
-  // row.className = "border-b border-gray-200";
 
   // Key cell - give it sufficient fixed width
   const keyCell = createCell("w-[30%]");
@@ -77,12 +76,34 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
   // Use the shared addApplyOnEnterHandler function
   addApplyOnEnterHandler(keyInput);
 
+  // Add Ctrl/CMD + X handler for key input
+  keyInput.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "x") {
+      e.preventDefault();
+      const editor = (window as any).paramsEditorInstance;
+      if (editor) {
+        const paramToUpdate = editor.currentParams[index];
+        if (paramToUpdate && paramToUpdate.type !== "string") {
+          paramToUpdate.type = "string";
+          editor.cachedUnfilteredFragment = null;
+          editor.renderParams();
+
+          // Defer focus until after the re-render
+          setTimeout(() => {
+            editor.focusValueInput(index);
+          }, 0);
+        }
+      }
+    }
+  });
+
   keyCell.appendChild(keyInput);
   row.appendChild(keyCell);
 
   // Value cell - let it take remaining space but not push others out
   const valueCell = createCell("w-[65%] overflow-hidden");
-  valueCell.appendChild(createValueInput({ param, index, onValueChange }));
+  const valueContainer = createValueInput({ param, index, onValueChange });
+  valueCell.appendChild(valueContainer);
   row.appendChild(valueCell);
 
   // Action cell - ensure fixed width
@@ -2092,6 +2113,22 @@ class ParamsEditor {
 
       // Focus the search input after clearing
       searchInput.focus();
+    }
+  }
+
+  public focusValueInput(index: number): void {
+    const rows = document.querySelectorAll("#paramsBody tr");
+    if (index >= 0 && index < rows.length) {
+      const row = rows[index];
+      // The value input is in the second 'td'.
+      const valueCell = row.querySelectorAll("td")[1];
+      if (valueCell) {
+        const valueInput = valueCell.querySelector("input");
+        if (valueInput instanceof HTMLInputElement) {
+          valueInput.focus();
+          valueInput.select();
+        }
+      }
     }
   }
 }
