@@ -2013,6 +2013,15 @@ class ParamsEditor {
         const activeElement = document.activeElement;
         if (!activeElement) return;
 
+        // If user has selected text, let the default copy action occur.
+        if (
+          (activeElement instanceof HTMLInputElement ||
+            activeElement instanceof HTMLTextAreaElement) &&
+          activeElement.selectionStart !== activeElement.selectionEnd
+        ) {
+          return;
+        }
+
         const currentRow = activeElement.closest("tr");
         if (!currentRow || !currentRow.parentElement?.id.includes("paramsBody"))
           return;
