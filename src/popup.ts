@@ -1857,11 +1857,51 @@ class ParamsEditor {
 
     if (keyInput) {
       keyInput.addEventListener("input", () => this.hideError());
+      // Add Ctrl/CMD + Enter handler for key input
+      keyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          this.applyChanges();
+        }
+      });
     }
 
     if (valueInput) {
       valueInput.addEventListener("input", () => this.hideError());
+      // Add Ctrl/CMD + Enter handler for value input
+      valueInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          this.applyChanges();
+        }
+      });
     }
+
+    // Add global keyboard shortcuts
+    document.addEventListener("keydown", (e) => {
+      // Ctrl/CMD + F to focus search
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault();
+        const searchInput = document.getElementById(
+          "searchParams"
+        ) as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+      }
+
+      // Ctrl/CMD + N to focus new key input
+      if ((e.ctrlKey || e.metaKey) && e.key === "n") {
+        e.preventDefault();
+        const keyInput = document.getElementById(
+          "newParamKey"
+        ) as HTMLInputElement;
+        if (keyInput) {
+          keyInput.focus();
+        }
+      }
+    });
   }
 
   private attachEventListener(
