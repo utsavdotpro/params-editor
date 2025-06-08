@@ -1901,6 +1901,61 @@ class ParamsEditor {
           keyInput.focus();
         }
       }
+
+      // Ctrl/CMD + S to apply changes
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        this.applyChanges();
+      }
+
+      // Ctrl/CMD + Z to reset changes
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        this.resetChanges();
+      }
+
+      // Ctrl/CMD + Up/Down to navigate between parameters
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown")
+      ) {
+        e.preventDefault();
+
+        // Get all parameter rows
+        const rows = document.querySelectorAll("#paramsBody tr");
+        if (rows.length === 0) return;
+
+        // Find currently focused input
+        const activeElement = document.activeElement;
+        if (!activeElement) return;
+
+        // Find the current row
+        const currentRow = activeElement.closest("tr");
+        if (!currentRow) return;
+
+        // Get current row index
+        const currentIndex = Array.from(rows).indexOf(currentRow);
+        if (currentIndex === -1) return;
+
+        // Calculate new index
+        let newIndex = currentIndex;
+        if (e.key === "ArrowUp") {
+          newIndex = Math.max(0, currentIndex - 1);
+        } else {
+          newIndex = Math.min(rows.length - 1, currentIndex + 1);
+        }
+
+        // Find input in the new row to focus
+        const newRow = rows[newIndex];
+        const inputToFocus = newRow.querySelector("input");
+        if (inputToFocus) {
+          inputToFocus.focus();
+          // Select the text if it's a text input
+          if (inputToFocus instanceof HTMLInputElement) {
+            inputToFocus.select();
+          }
+        }
+      }
     });
   }
 
