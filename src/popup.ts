@@ -1033,7 +1033,7 @@ class ParamsEditor {
     }
 
     // Hide any errors on startup
-    this.hideError();
+    this.hideMessage();
   }
 
   private checkRequiredElements() {
@@ -1060,7 +1060,7 @@ class ParamsEditor {
 
   private async loadCurrentUrl() {
     console.log("Loading current URL");
-    this.hideError(); // Clear any previous errors
+    this.hideMessage(); // Clear any previous errors
     try {
       // Get current URL from background script
       const response = await chrome.runtime.sendMessage({
@@ -1073,13 +1073,14 @@ class ParamsEditor {
         this.parseAndDisplayParams();
       } else {
         console.error("Failed to get current URL");
-        this.showError("Failed to get current URL from tab");
+        this.showMessage("Failed to get current URL from tab", "error");
       }
     } catch (error) {
       console.error("Error loading current URL:", error);
-      this.showError(
+      this.showMessage(
         "Error loading current URL: " +
-          (error instanceof Error ? error.message : String(error))
+          (error instanceof Error ? error.message : String(error)),
+        "error"
       );
     }
   }
@@ -1537,7 +1538,7 @@ class ParamsEditor {
   }
 
   private updateParamValue(index: number, value: string) {
-    this.hideError(); // Clear any errors when user makes changes
+    this.hideMessage(); // Clear any errors when user makes changes
     if (index >= 0 && index < this.currentParams.length) {
       this.currentParams[index].value = value;
       // Debounce type detection to avoid excessive processing during typing
@@ -1558,7 +1559,7 @@ class ParamsEditor {
   );
 
   private updateParamKey(index: number, key: string) {
-    this.hideError(); // Clear any errors when user makes changes
+    this.hideMessage(); // Clear any errors when user makes changes
     if (index >= 0 && index < this.currentParams.length) {
       this.currentParams[index].key = key;
       // Invalidate cache when params change
@@ -1638,7 +1639,7 @@ class ParamsEditor {
   private handleClickOutside: ((e: MouseEvent) => void) | null = null;
 
   private addNewParam() {
-    this.hideError(); // Clear any errors when user makes changes
+    this.hideMessage(); // Clear any errors when user makes changes
     const keyInput = document.getElementById("newParamKey") as HTMLInputElement;
     const valueInput = document.getElementById(
       "newParamValue"
@@ -1677,7 +1678,7 @@ class ParamsEditor {
         keyInput.focus();
       } else {
         // Show error for empty key
-        this.showError("Parameter key cannot be empty!");
+        this.showMessage("Parameter key cannot be empty!", "error");
         keyInput.focus();
       }
     }
@@ -1725,7 +1726,7 @@ class ParamsEditor {
 
   private async applyChanges() {
     // Clear any existing errors before starting
-    this.hideError();
+    this.hideMessage();
 
     // Show spinner for visual feedback
     this.showApplySpinner();
@@ -1749,8 +1750,9 @@ class ParamsEditor {
         (param) => !param.key.trim()
       );
       if (invalidParams.length > 0) {
-        this.showError(
-          `Cannot apply changes: ${invalidParams.length} parameter(s) have empty keys!`
+        this.showMessage(
+          `Cannot apply changes: ${invalidParams.length} parameter(s) have empty keys!`,
+          "error"
         );
         this.hideApplySpinner();
         return;
@@ -1850,15 +1852,16 @@ class ParamsEditor {
       this.hideApplySpinner();
     } catch (error) {
       console.error("Error applying changes:", error);
-      this.showError(
-        error instanceof Error ? error.message : "Failed to apply changes"
+      this.showMessage(
+        error instanceof Error ? error.message : "Failed to apply changes",
+        "error"
       );
       this.hideApplySpinner();
     }
   }
 
   private resetChanges() {
-    this.hideError(); // Clear any errors when resetting
+    this.hideMessage(); // Clear any errors when resetting
     this.currentParams = [...this.originalParams];
     // Invalidate cache when params change
     this.cachedUnfilteredFragment = null;
@@ -1926,7 +1929,7 @@ class ParamsEditor {
     const valueInput = document.getElementById("newParamValue");
 
     if (keyInput) {
-      keyInput.addEventListener("input", () => this.hideError());
+      keyInput.addEventListener("input", () => this.hideMessage());
       // Add Ctrl/CMD + Enter handler for key input
       keyInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -1937,7 +1940,7 @@ class ParamsEditor {
     }
 
     if (valueInput) {
-      valueInput.addEventListener("input", () => this.hideError());
+      valueInput.addEventListener("input", () => this.hideMessage());
       // Add Ctrl/CMD + Enter handler for value input
       valueInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -2003,7 +2006,9 @@ class ParamsEditor {
         let copyText: string | undefined;
         const keyInput = currentRow.querySelector("input");
 
-        if (activeElement === keyInput) {
+        const shouldCopyKey = activeElement === keyInput;
+
+        if (shouldCopyKey) {
           copyText = `${param.key}=${param.value}`;
         } else {
           const valueCell = currentRow.querySelectorAll("td")[1];
@@ -2014,9 +2019,18 @@ class ParamsEditor {
 
         if (copyText !== undefined) {
           e.preventDefault();
-          navigator.clipboard.writeText(copyText).catch((err) => {
-            console.error("Failed to copy text: ", err);
-          });
+          navigator.clipboard
+            .writeText(copyText)
+            .then(() => {
+              this.showMessage(
+                shouldCopyKey ? "Key/Value copied!" : "Value copied!",
+                "success"
+              );
+            })
+            .catch((err) => {
+              console.error("Failed to copy text: ", err);
+              this.showMessage("Copy failed", "error");
+            });
         }
       }
 
@@ -2084,23 +2098,41 @@ class ParamsEditor {
   }
 
   // Function to show an error message to the user
-  private showError(message: string): void {
+  private showMessage(
+    message: string,
+    type: "success" | "error" = "error"
+  ): void {
     const messageContainer = document.getElementById("messageContainer");
     const messageText = document.getElementById("messageText");
 
     if (messageContainer && messageText) {
       messageText.textContent = message;
+
+      // Reset classes
+      messageText.classList.remove("text-red-500", "text-green-600");
+
+      if (type === "error") {
+        messageText.classList.add("text-red-500");
+      } else {
+        messageText.classList.add("text-green-600");
+      }
+
       messageContainer.classList.remove("hidden");
-      // Scroll into view if needed
-      messageContainer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+      // Automatically hide success messages
+      if (type === "success") {
+        setTimeout(() => {
+          this.hideMessage();
+        }, 2000); // Hide after 2 seconds
+      }
     } else {
       // Fallback to console if error elements don't exist
-      console.error("Error:", message);
+      console.error("Message container not found. Message:", message);
     }
   }
 
   // Function to hide error message
-  private hideError(): void {
+  private hideMessage(): void {
     const messageContainer = document.getElementById("messageContainer");
     if (messageContainer) {
       messageContainer.classList.add("hidden");
