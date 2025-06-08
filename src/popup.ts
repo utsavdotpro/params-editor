@@ -1572,6 +1572,50 @@ class ParamsEditor {
     }
   }
 
+  private showKeyboardShortcuts() {
+    const popover = document.getElementById("keyboardShortcutsPopover");
+    const button = document.getElementById("keyboardShortcutsBtn");
+
+    if (!popover || !button) return;
+
+    // Toggle the popover
+    const isVisible = !popover.classList.contains("hidden");
+
+    if (isVisible) {
+      popover.classList.add("hidden");
+      if (this.handleClickOutside) {
+        document.removeEventListener("click", this.handleClickOutside);
+      }
+    } else {
+      // Hide any existing popover
+      popover.classList.remove("hidden");
+
+      // Position the popover
+      const buttonRect = button.getBoundingClientRect();
+      const popoverRect = popover.getBoundingClientRect();
+
+      // Add click outside handler
+      this.handleClickOutside = (e: MouseEvent) => {
+        if (
+          !popover.contains(e.target as Node) &&
+          !(e.target as Element).closest("#keyboardShortcutsBtn")
+        ) {
+          popover.classList.add("hidden");
+          document.removeEventListener("click", this.handleClickOutside!);
+        }
+      };
+
+      // Delay adding the click listener to avoid immediate closure
+      setTimeout(() => {
+        if (this.handleClickOutside) {
+          document.addEventListener("click", this.handleClickOutside);
+        }
+      }, 0);
+    }
+  }
+
+  private handleClickOutside: ((e: MouseEvent) => void) | null = null;
+
   private addNewParam() {
     this.hideError(); // Clear any errors when user makes changes
     const keyInput = document.getElementById("newParamKey") as HTMLInputElement;
@@ -1822,6 +1866,11 @@ class ParamsEditor {
 
     this.attachEventListener("resetBtn", "click", () => {
       this.resetChanges();
+    });
+
+    // Add keyboard shortcuts button click handler
+    this.attachEventListener("keyboardShortcutsBtn", "click", () => {
+      this.showKeyboardShortcuts();
     });
 
     // Add event listener for search input

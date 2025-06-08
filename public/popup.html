@@ -131,24 +131,84 @@
               Reset
             </button>
 
-            <div class="flex-1 text-end text-gray-600 font-light self-end">
+            <div
+              class="flex-1 text-end text-gray-600 font-light self-end flex items-center justify-end relative"
+            >
               <span id="paramsCount"></span>
-              Param(s)
-            </div>
-          </div>
+              <span class="ms-1"></span>Param(s)</span>
 
-          <!-- Error message container -->
-          <div
-            id="errorContainer"
-            class="mt-3 p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm hidden"
-          >
-            <div class="flex items-start">
-              <img
-                src="https://unpkg.com/lucide-static@latest/icons/triangle-alert.svg"
-                class="w-4 h-4 mr-2 stroke-current fill-none flex-shrink-0 mt-0.5"
-                alt="Error"
-              />
-              <span id="errorMessage"></span>
+              <button
+                id="keyboardShortcutsBtn"
+                class="ms-2 text-gray-500 hover:text-gray-700"
+                title="Keyboard Shortcuts"
+              >
+                <img
+                  src="https://unpkg.com/lucide-static@latest/icons/keyboard.svg"
+                  class="w-4 h-4 align-text-bottom stroke-current fill-none"
+                  alt="Keyboard Shortcuts"
+                />
+              </button>
+
+              <div
+                id="keyboardShortcutsPopover"
+                class="hidden absolute right-0 bottom-full mb-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
+              >
+                <div class="p-2">
+                  <div class="space-y-1">
+                    <div class="flex items-center justify-between text-xs">
+                      <kbd
+                        class="px-1.5 py-0.5 bg-gray-50 rounded text-[10px] font-mono border border-gray-200"
+                        >Esc</kbd
+                      >
+                      <span class="text-gray-600 ml-2">Close</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                      <kbd
+                        class="px-1.5 py-0.5 bg-gray-50 rounded text-[10px] font-mono border border-gray-200"
+                        >⌘ + F</kbd
+                      >
+                      <span class="text-gray-600 ml-2">Search</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                      <kbd
+                        class="px-1.5 py-0.5 bg-gray-50 rounded text-[10px] font-mono border border-gray-200"
+                        >⌘ + N</kbd
+                      >
+                      <span class="text-gray-600 ml-2">Add new param</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                      <kbd
+                        class="px-1.5 py-0.5 bg-gray-50 rounded text-[10px] font-mono border border-gray-200"
+                        >⌘ + S</kbd
+                      >
+                      <span class="text-gray-600 ml-2">Apply changes</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                      <kbd
+                        class="px-1.5 py-0.5 bg-gray-50 rounded text-[10px] font-mono border border-gray-200"
+                        >⌘ + Z</kbd
+                      >
+                      <span class="text-gray-600 ml-2">Reset changes</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                      <kbd
+                        class="px-1.5 py-0.5 bg-gray-50 rounded text-[10px] font-mono border border-gray-200"
+                        >⌘ + ↑/↓</kbd
+                      >
+                      <span class="text-gray-600 ml-2">Navigate params</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                      <kbd
+                        class="px-1.5 py-0.5 bg-gray-50 rounded text-[10px] font-mono border border-gray-200 text-start"
+                        >⌘ + Enter</kbd
+                      >
+                      <span class="text-gray-600 ml-2"
+                        >Apply changes (when adding)</span
+                      >
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
