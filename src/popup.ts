@@ -416,7 +416,10 @@ const createListInput = (
       previewContainer.appendChild(placeholder);
     } else {
       const editIcon = createIcon("pencil", "Edit List");
-      editIcon.className = "w-4 h-4 ml-auto text-gray-500 flex-shrink-0";
+      editIcon.setAttribute(
+        "class",
+        "w-4 h-4 ml-auto text-gray-500 flex-shrink-0"
+      );
       previewContainer.appendChild(editIcon);
     }
   };
@@ -752,7 +755,7 @@ const createJsonInput = (
   previewContainer.appendChild(previewText);
 
   const editIcon = createIcon("pencil", "Edit JSON");
-  editIcon.className = "w-4 h-4 ml-2 text-gray-500 flex-shrink-0";
+  editIcon.setAttribute("class", "w-4 h-4 ml-2 text-gray-500 flex-shrink-0");
   previewContainer.appendChild(editIcon);
 
   container.appendChild(previewContainer);
@@ -871,11 +874,30 @@ const createJsonInput = (
   return container;
 };
 
-const createIcon = (iconName: string, alt: string): HTMLImageElement => {
-  const icon = document.createElement("img");
-  icon.src = `https://unpkg.com/lucide-static@latest/icons/${iconName}.svg`;
-  icon.className = "w-4 h-4 align-text-bottom stroke-current fill-none";
-  icon.alt = alt;
+const ICON_PATHS: Record<string, string> = {
+  pencil:
+    "M13.5 6.5 17.5 10.5M4 20l4.5-1 9-9a2.121 2.121 0 1 0-3-3l-9 9L4 20Z",
+  "trash-2":
+    "M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6",
+};
+
+const createIcon = (iconName: string, alt: string): SVGElement => {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(svgNS, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("role", "img");
+  icon.setAttribute("aria-label", alt);
+  icon.classList.add("w-4", "h-4", "align-text-bottom");
+
+  const path = document.createElementNS(svgNS, "path");
+  path.setAttribute("d", ICON_PATHS[iconName] || ICON_PATHS.pencil);
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+
+  icon.appendChild(path);
   return icon;
 };
 
