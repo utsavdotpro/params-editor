@@ -1,10 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Params Editor",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Edit URL query parameters with smart input types",
-  "permissions": ["activeTab", "tabs"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js"
   },
