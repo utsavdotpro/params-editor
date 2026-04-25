@@ -3,7 +3,7 @@ name: Release Artifact
 on:
   push:
     branches:
-      - main
+      - codex/release-ci
 
 permissions:
   contents: write
