@@ -11,6 +11,7 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: "[name].js",
+    clean: true,
   },
   module: {
     rules: [
@@ -30,7 +31,15 @@ module.exports = {
   },
   plugins: [
     new CopyPlugin({
-      patterns: [{ from: "public", to: "." }],
+      patterns: [
+        {
+          from: "public",
+          to: ".",
+          globOptions: {
+            ignore: ["**/.DS_Store"],
+          },
+        },
+      ],
     }),
   ],
   devServer: {
