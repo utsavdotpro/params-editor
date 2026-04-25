@@ -152,10 +152,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: String(error) });
       return true;
     }
-  } else if (message.type === "contentScriptLoaded") {
-    sendResponse({
-      status: "Background script received content script message",
-    });
   } else {
     sendResponse({ success: false, error: "Unhandled message type" });
   }
