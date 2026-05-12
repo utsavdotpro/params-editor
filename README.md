@@ -54,3 +54,43 @@ npm run watch
 ## Building
 
 The extension is built using webpack. The output will be in the `dist` directory, which is what you'll load into Chrome.
+
+
+## Docker Compose (Full-Stack Dev)
+
+This repository now includes a local Docker Compose setup for running:
+
+- Extension development server (`extension-dev`) on `http://localhost:8080`
+- PocketBase (`pocketbase`) on `http://localhost:8090`
+
+### Start all services
+
+```bash
+./scripts/docker-up.sh
+```
+
+### Stop all services
+
+```bash
+./scripts/docker-down.sh
+```
+
+### Follow logs
+
+```bash
+./scripts/docker-logs.sh
+```
+
+Or for a single service:
+
+```bash
+./scripts/docker-logs.sh pocketbase
+```
+
+### Run extension production build in Docker
+
+```bash
+./scripts/docker-build.sh
+```
+
+> Note: schema/seed import for PocketBase is intentionally left manual for now.
