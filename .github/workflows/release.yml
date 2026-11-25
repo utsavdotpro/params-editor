@@ -1,0 +1,176 @@
+name: Release
+
+# Direct Chrome Web Store deploy.
+# workflow_dispatch bumps package.json + public/manifest.json, builds, uploads,
+# and only then commits the bump to main and tags vX.Y.Z.
+# A human tag push v* deploys the version already committed on that tag.
+# Tags created by this workflow are pushed by github-actions[bot] and do not
+# deploy a second time.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump applied to package.json and public/manifest.json
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      publish_target:
+        description: publish submits for review; upload-only uploads and stops
+        type: choice
+        options:
+          - publish
+          - upload-only
+        default: publish
+      dry_run:
+        description: Package and validate secrets only. Do not upload, commit, or tag.
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chrome-web-store-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Package and publish
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+
+      - name: Require a dispatch from main
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Run this workflow from the main branch. Current ref: ${GITHUB_REF}"
+            exit 1
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Record pre-bump version
+        if: github.event_name == 'workflow_dispatch'
+        id: before
+        run: echo "version=$(node -p "require('./public/manifest.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version
+        if: github.event_name == 'workflow_dispatch'
+        run: node scripts/bump-version.mjs "${{ inputs.bump }}"
+
+      - name: Fail if the dispatch did not increase the version
+        if: github.event_name == 'workflow_dispatch'
+        run: node scripts/assert-version.mjs --previous "${{ steps.before.outputs.version }}"
+
+      - name: Fail if the tag was not a strict version bump
+        if: github.event_name == 'push'
+        run: node scripts/assert-version.mjs --equals "${GITHUB_REF_NAME}" --greater-than-parent
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Export release version
+        id: version
+        run: |
+          VERSION="$(node -p "require('./public/manifest.json').version")"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Production build
+        run: pnpm run build:prod
+
+      - name: Zip dist with manifest.json at the archive root
+        run: node scripts/package-extension.mjs
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: params-editor-${{ steps.version.outputs.version }}
+          path: params-editor-${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+
+      - name: Upload to the Chrome Web Store
+        id: cws
+        env:
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          ZIP_PATH: params-editor-${{ steps.version.outputs.version }}.zip
+          EXTENSION_VERSION: ${{ steps.version.outputs.version }}
+          PUBLISH_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_target || 'publish' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
+        run: |
+          set +e
+          node scripts/publish-cws.mjs
+          status=$?
+          set -e
+          if [ -f .cws-upload-result.json ]; then
+            echo "uploaded=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "uploaded=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$status"
+
+      - name: Commit bump and tag
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.dry_run != true && steps.cws.outputs.uploaded == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/manifest.json package.json
+          git commit -m "chore: release v${VERSION}"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin HEAD:main
+          git push origin "v${VERSION}"
+
+      - name: GitHub Release
+        if: always() && steps.cws.outputs.uploaded == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run != true))
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TARGET="${{ github.event_name == 'workflow_dispatch' && inputs.publish_target || 'publish' }}"
+          NOTES=$(printf '%s\n' \
+            "Chrome Web Store release ${VERSION}." \
+            "" \
+            "- Publish target: ${TARGET}" \
+            "- Package: params-editor-${VERSION}.zip (manifest.json at the zip root)" \
+            "- API: Chrome Web Store API v2")
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${VERSION}" "params-editor-${VERSION}.zip" --clobber
+          else
+            gh release create "v${VERSION}" "params-editor-${VERSION}.zip" \
+              --title "v${VERSION}" \
+              --notes "${NOTES}" \
+              --target "$(git rev-parse HEAD)"
+          fi

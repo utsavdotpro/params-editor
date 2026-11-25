@@ -1,0 +1,225 @@
+# CI/CD
+
+Live Crit review: pending — the PR description has the shared review URL once Crit has published it.
+
+Chrome Web Store deploys for Params Editor. Nothing in this pipeline changes extension behavior. It typechecks, tests, builds, bumps the version, and uploads the zip.
+
+![Release path](images/release-flow.svg)
+
+## Architecture
+
+| Piece | Role |
+| --- | --- |
+| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | On every pull request and every push to `main`: install, typecheck, test, production build. Read-only token. |
+| [`.github/workflows/release.yml`](../.github/workflows/release.yml) | Chrome Web Store upload and publish. |
+| [`scripts/bump-version.mjs`](../scripts/bump-version.mjs) | One bump for `public/manifest.json` and `package.json`. Local and CI use this script. |
+| [`scripts/assert-version.mjs`](../scripts/assert-version.mjs) | Fails if the two version fields differ, or if the new version is not strictly greater. |
+| [`scripts/package-extension.mjs`](../scripts/package-extension.mjs) | Zips `dist/` so `manifest.json` is at the archive root. |
+| [`scripts/publish-cws.mjs`](../scripts/publish-cws.mjs) | OAuth refresh, then Chrome Web Store API **v2**. |
+| `pnpm run build:prod` | `webpack --mode production --devtool false`. `pnpm run build` is still the development build. |
+
+There is no third-party Chrome Web Store action. Upload is the small Node script above. `pnpm/action-setup@v4` only installs pnpm so `actions/setup-node` can cache the lockfile. `actions/upload-artifact@v4` keeps the zip on the workflow run.
+
+API choice: Chrome Web Store API v2 (`chromewebstore.googleapis.com`). Google turned the v1.1 API off on 15 October 2026. v2 needs the publisher id in the path. The same OAuth scope and refresh token as v1 still work.
+
+The store API cannot create the first listing. Upload the first package in the [developer dashboard](https://chrome.google.com/webstore/devconsole), including the store listing and privacy tabs, before this workflow can update it.
+
+## How a release is recorded in git
+
+`workflow_dispatch` is the path to use.
+
+1. The runner bumps `public/manifest.json` and `package.json` with `scripts/bump-version.mjs`.
+2. It fails if that version is not strictly greater than the version it just read.
+3. It production-builds and zips `dist/`.
+4. It checks the five secrets. Missing or malformed ids stop here with their names.
+5. It uploads the zip. `publish` then calls `:publish`. `upload-only` does not.
+6. Only after the store accepts the upload does the workflow commit `chore: release vX.Y.Z` to `main`, create annotated tag `vX.Y.Z`, and open a GitHub Release with the zip attached.
+
+A failed upload does not commit and does not move `main`. Dispatch again after fixing the cause. The same base version is bumped again.
+
+If the upload is accepted and `:publish` then fails, the script still writes `.cws-upload-result.json`. The workflow commits and tags that version, and the job stays red. That version is already on the store. Do not try to upload it again. Fix the publish error and either publish that draft in the dashboard or ship a newer bump.
+
+The push uses `GITHUB_TOKEN`. GitHub does not start a new workflow from that push, so the bot tag does not upload twice. The job also ignores tag events whose actor is `github-actions[bot]`, which covers a repo that later pushes with a personal access token.
+
+### Tag push `v*`
+
+Optional. Pushing `v1.2.3` deploys the version already committed on that commit. It does not bump. The workflow fails unless:
+
+- `public/manifest.json` and `package.json` both equal `1.2.3`
+- that version is strictly greater than `public/manifest.json` on the parent commit
+
+Tag pushes publish (`DEFAULT_PUBLISH`). Use `workflow_dispatch` with `upload-only` when you want a draft upload. There is no separate draft API. Skipping `:publish` leaves the package uploaded and not submitted for review.
+
+## How to trigger a release
+
+After this file is on `main` and the secrets below exist:
+
+1. GitHub → Actions → **Release** → **Run workflow**.
+2. Branch: `main`.
+3. Bump: `patch`, `minor`, or `major`. Default `patch`.
+4. Publish target: `upload-only` for the first real upload, then `publish` when you want review. Default `publish`.
+5. Dry run: check it to validate secrets and build the zip without uploading, committing, or tagging.
+
+Dry run still fails, on purpose, when a secret is missing. The log lists the missing names.
+
+Manual equivalent of the bump, from a clean `main` checkout:
+
+```bash
+pnpm run bump:version -- patch   # or minor, or major
+```
+
+That writes both files. Do not upload a package whose manifest version is less than or equal to the version already on the store. The store rejects it, and the script now refuses before the upload when `fetchStatus` already shows that version.
+
+## Version rules
+
+- Both files store `major.minor.patch`. The bump script refuses any other shape, and it refuses to run if the two files disagree.
+- Compare segments as integers. `1.10.0` is greater than `1.9.0`.
+- Every store upload needs a strictly greater version than the published package and any package already submitted.
+- Webpack copies `public/manifest.json` into `dist/manifest.json`. Bump first, then `pnpm run build:prod`, then zip. The packager fails if those three versions differ.
+- The zip name is `params-editor-<version>.zip`.
+- Do not edit the version by hand in one file only.
+
+`pnpm run build` is not the store build. It stays `mode: development` with inline source maps, which is the previous local behavior.
+
+## Secrets Utsav needs before the first release
+
+Add these as **repository** secrets. Not in git, not in the workflow file.
+
+GitHub → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
+
+| Secret | What it is |
+| --- | --- |
+| `CHROME_EXTENSION_ID` | 32-character item id, letters `a`–`p` only. |
+| `CHROME_PUBLISHER_ID` | Publisher id from the developer dashboard. Required by API v2. |
+| `CHROME_CLIENT_ID` | OAuth client id from Google Cloud. |
+| `CHROME_CLIENT_SECRET` | OAuth client secret from the same client. |
+| `CHROME_REFRESH_TOKEN` | Long-lived refresh token for scope `https://www.googleapis.com/auth/chromewebstore`. |
+
+The workflow also needs **Settings → Actions → General → Workflow permissions → Read and write**. The default read-only token cannot push the release commit or the tag.
+
+If `main` is protected, allow `github-actions[bot]` to push to `main` and to create tags, or the commit step will fail after a successful upload. That still consumes the store version. Set the bypass before the first real publish.
+
+No other secrets are required. Do not add the access token. The script exchanges the refresh token at `https://oauth2.googleapis.com/token` on each run.
+
+### 1. Google account
+
+Use the Google account that owns the Chrome Web Store item. Turn on 2-step verification. The store requires it before you can publish.
+
+The Cloud project can live on this same account. The refresh token must be minted by the account that owns the items. Those can be different accounts. The token's account is the one that matters.
+
+### 2. Google Cloud project and the API
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a project, or select one. A dedicated project such as `params-editor-cws` is easier to reason about.
+3. APIs & Services → Library. Search **Chrome Web Store API**.
+4. Enable **Chrome Web Store API**.
+
+### 3. OAuth consent screen
+
+1. APIs & Services → OAuth consent screen.
+2. User type **External** → Create. (Use Internal only if this is a Google Workspace org and the publisher account is inside it.)
+3. App name, user support email, and developer contact email. Save and continue.
+4. Scopes: you can skip this page. The playground requests the scope in the next section.
+5. Test users: add the Gmail address of the store owner. Save and continue.
+
+Leave the app in **Testing** until the refresh token works. See the 7-day limit under Troubleshooting before you rely on it weekly.
+
+### 4. OAuth client
+
+1. APIs & Services → Credentials → Create credentials → **OAuth client ID**.
+2. Application type: **Web application**.
+3. Name: `params-editor-release`.
+4. Authorized redirect URIs: `https://developers.google.com/oauthplayground`
+5. Create. Copy the client id and client secret into `CHROME_CLIENT_ID` and `CHROME_CLIENT_SECRET`.
+
+### 5. Refresh token
+
+1. Open [OAuth 2.0 Playground](https://developers.google.com/oauthplayground).
+2. Gear icon → check **Use your own OAuth credentials**.
+3. Paste the client id and client secret. Close the dialog.
+4. In "Input your own scopes", enter exactly:
+
+   `https://www.googleapis.com/auth/chromewebstore`
+
+5. Authorize APIs. Sign in as the store owner. If the app is unverified, continue past the warning. This is your own client.
+6. Exchange authorization code for tokens.
+7. Copy the **refresh token** (not the access token, which expires in about an hour) into `CHROME_REFRESH_TOKEN`.
+
+Confirm the exchange response includes scope `https://www.googleapis.com/auth/chromewebstore`. If the playground created a refresh token without that scope, the upload will fail later.
+
+### 6. Extension id → `CHROME_EXTENSION_ID`
+
+Either:
+
+- `chrome://extensions` with Developer mode on. Copy the **ID** under Params Editor. It is 32 characters from `a` to `p`.
+- Or the [developer dashboard](https://chrome.google.com/webstore/devconsole) → the item → **Package**. The item id is the same value.
+
+The unpacked local id and the published id match only when the extension is loaded with the store's key. Use the id shown on the published item, not a random unpacked load.
+
+### 7. Publisher id → `CHROME_PUBLISHER_ID`
+
+1. Open the [developer dashboard](https://chrome.google.com/webstore/devconsole).
+2. If the account belongs to more than one publisher, switch to the publisher that owns Params Editor.
+3. **Publisher** → **Settings** (account settings).
+4. Copy the **Publisher ID** shown there.
+
+That id is not the extension id. v2 returns a confusing 404 when they are swapped.
+
+## Test with upload-only before the first public submit
+
+1. Put all five secrets in the repo.
+2. Actions → Release → Run workflow on `main`.
+3. First pass: bump `patch`, publish target `publish`, **dry run checked**. Expect a green run, a zip artifact, and no new commit.
+4. Second pass: bump `patch`, publish target **`upload-only`**, dry run unchecked.
+5. The run commits, tags `vX.Y.Z`, and attaches the zip to a GitHub Release.
+6. In the developer dashboard, confirm the new package is on the item and is **not** in review.
+7. When that package looks right, either publish it from the dashboard, or run the workflow again with target `publish` and a new bump. `publish` sends `publishType: DEFAULT_PUBLISH`.
+
+`DEFAULT_PUBLISH` submits the item for review and, after Google approves it, publishes to the audience already configured on the item. It does not skip review. The API keeps the current visibility. If you changed visibility in the dashboard, Google requires one manual publish with the new visibility before the API will publish again.
+
+## Rollback
+
+You cannot republish an older version number. The store version only moves forward.
+
+- Still in review, not yet published: dashboard, or `POST https://chromewebstore.googleapis.com/v2/publishers/PUBLISHER_ID/items/EXTENSION_ID:cancelSubmission` with the same Bearer token. This workflow does not call that.
+- Already published: `POST https://chromewebstore.googleapis.com/v2/publishers/PUBLISHER_ID/items/EXTENSION_ID:rollback` with JSON `targetCrxVersion` (the older published package), `newVersion` (strictly greater than the package that is live now), and `rollbackReason`. `validateOnly: true` checks the call without rolling back. The old package is published again under the new version number.
+- Code fix: land the fix on `main`, then run Release with a new bump. That is the usual path. Do not retag the bad version.
+
+## Local check
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm test
+node scripts/bump-version.mjs patch   # writes both version files; git checkout -- them if you were only proving the script
+pnpm run build:prod
+node scripts/package-extension.mjs
+unzip -l params-editor-*.zip
+```
+
+`manifest.json` in that listing must not be nested under `dist/`. A local secret check with empty env:
+
+```bash
+node scripts/publish-cws.mjs --dry-run
+```
+
+That exits 1 and prints the five secret names. It does not call Google.
+
+## Troubleshooting
+
+| What you see | What to do |
+| --- | --- |
+| `Missing GitHub Actions secrets` and a list of names | Add those repository secrets. Names must match exactly. Environment secrets are invisible to this workflow because it does not set `environment:`. |
+| `CHROME_EXTENSION_ID must be the 32-character...` | The value has the wrong length or a character outside `a`–`p`. The log does not print the value. |
+| `invalid_grant` or a note about 7 days | The consent screen is in Testing. Google expires that refresh token after 7 days. Mint a new one in the playground, or click **Publish app** on the consent screen so the token stops expiring weekly. Publishing the consent screen can show an unverified-app warning on the next consent. That is still your own client and your own account. |
+| `Could not read the current store item` / 404 | Publisher id and extension id are swapped, the token's Google account does not own the item, or the first listing was never created in the dashboard. |
+| `versions must strictly increase` before upload | The manifest was not bumped past the version already published or submitted. Dispatch again with a bump, or remove the stuck submission. |
+| Store error that mentions version, during upload | Same rule, caught by the API. The workflow has not committed if `.cws-upload-result.json` was not written. |
+| Upload succeeded, publish failed | The version is on the item. The workflow commits it when the result file exists. Publish from the dashboard, or cancel and ship a higher version. Check whether visibility was changed and needs one manual publish. |
+| `Run this workflow from the main branch` | The dispatch ref was not `main`. Re-run and select `main`. The workflow file has to be on `main` already, which means this PR is merged. |
+| Tag workflow: tag does not match manifest | The tag name and both version fields must be the same `X.Y.Z`. |
+| Tag workflow: not greater than the parent commit | That commit did not change the version. Bump, commit, then tag the bump commit. |
+| `github-actions[bot]` cannot push | Workflow permissions are still read-only, or branch protection blocked the bot. The store may already have this version. |
+| Zip rejected for layout | `manifest.json` must be at the root of the zip. `scripts/package-extension.mjs` builds that layout from `dist/`. Do not zip the `dist` folder itself. |
+
+![Local dry run: bump, test, production build, zip listing](images/local-dry-run.png)
