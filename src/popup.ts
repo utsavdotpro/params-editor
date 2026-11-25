@@ -1,6 +1,13 @@
 /// <reference types="chrome"/>
 
 import "./global.css";
+import {
+  autoScrollStep,
+  buildSearch,
+  canReorderList,
+  nextDragIndex,
+  reorderByIndexOrder,
+} from "./param-reorder";
 
 interface Param {
   key: string;
@@ -32,9 +39,17 @@ function debounce<T extends (...args: any[]) => any>(
 interface ParamRowProps {
   param: Param;
   index: number;
+  dragEnabled: boolean;
   onKeyChange: (index: number, key: string) => void;
   onValueChange: (index: number, value: string) => void;
   onRemove: (index: number) => void;
+}
+
+interface ParamDragState {
+  pointerId: number;
+  row: HTMLTableRowElement;
+  scrollRaf: number;
+  lastY: number;
 }
 
 interface ValueInputProps {
@@ -50,16 +65,68 @@ const createCell = (className: string = ""): HTMLTableCellElement => {
   return cell;
 };
 
-const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
-  const { param, index, onKeyChange, onValueChange, onRemove } = props;
-  const row = document.createElement("tr");
+const createGripIcon = (): SVGElement => {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(svgNS, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("aria-hidden", "true");
+  icon.classList.add("w-4", "h-4", "pointer-events-none");
 
-  // Key cell - give it sufficient fixed width
+  const dots: [number, number][] = [
+    [9, 6],
+    [9, 12],
+    [9, 18],
+    [15, 6],
+    [15, 12],
+    [15, 18],
+  ];
+
+  for (const [cx, cy] of dots) {
+    const circle = document.createElementNS(svgNS, "circle");
+    circle.setAttribute("cx", String(cx));
+    circle.setAttribute("cy", String(cy));
+    circle.setAttribute("r", "1.35");
+    circle.setAttribute("fill", "currentColor");
+    icon.appendChild(circle);
+  }
+
+  return icon;
+};
+
+const createDragHandle = (dragEnabled: boolean): HTMLButtonElement => {
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className =
+    "param-drag-handle inline-flex items-center justify-center w-6 h-6 rounded";
+  handle.draggable = false;
+  handle.setAttribute("aria-label", "Drag to reorder");
+  handle.title = dragEnabled
+    ? "Drag to reorder"
+    : "Clear search to reorder";
+  if (!dragEnabled) {
+    handle.setAttribute("aria-disabled", "true");
+  }
+  handle.appendChild(createGripIcon());
+  return handle;
+};
+
+const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
+  const { param, index, dragEnabled, onKeyChange, onValueChange, onRemove } =
+    props;
+  const row = document.createElement("tr");
+  row.dataset.paramIndex = String(index);
+
+  // Key cell. The grip sits in this cell, left of the input, so the table
+  // keeps its original three columns and does not grow past the popup.
   const keyCell = createCell("w-[30%]");
+  keyCell.classList.add("param-key-cell");
+  const keyWrap = document.createElement("div");
+  keyWrap.className = "flex items-center gap-1";
+  keyWrap.appendChild(createDragHandle(dragEnabled));
   const keyInput = document.createElement("input");
   keyInput.type = "text";
   keyInput.className =
-    "w-full p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
+    "min-w-0 flex-1 p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500";
   keyInput.value = param.key;
 
   // Add input event listener to catch all changes including when typing
@@ -75,6 +142,8 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
 
   // Use the shared addApplyOnEnterHandler function
   addApplyOnEnterHandler(keyInput);
+  keyWrap.appendChild(keyInput);
+  keyCell.appendChild(keyWrap);
 
   // Add Ctrl/CMD + X handler for key input
   keyInput.addEventListener("keydown", (e) => {
@@ -97,11 +166,10 @@ const createParamRow = (props: ParamRowProps): HTMLTableRowElement => {
     }
   });
 
-  keyCell.appendChild(keyInput);
   row.appendChild(keyCell);
 
   // Value cell - let it take remaining space but not push others out
-  const valueCell = createCell("w-[65%] overflow-hidden");
+  const valueCell = createCell("w-[65%] overflow-hidden param-value-cell");
   const valueContainer = createValueInput({ param, index, onValueChange });
   valueCell.appendChild(valueContainer);
   row.appendChild(valueCell);
@@ -1063,6 +1131,7 @@ class ParamsEditor {
     const requiredElements = [
       "urlDisplay",
       "paramsBody",
+      "paramsScroll",
       "addParamBtn",
       "applyBtn",
       "resetBtn",
@@ -1393,6 +1462,7 @@ class ParamsEditor {
   }
 
   private renderParams() {
+    this.stopDragTracking();
     const paramsBody = document.getElementById("paramsBody");
     if (!paramsBody) {
       console.error("paramsBody element not found");
@@ -1496,6 +1566,7 @@ class ParamsEditor {
           const row = createParamRow({
             param,
             index: this.currentParams.indexOf(param),
+            dragEnabled: canReorderList(this.searchTerm),
             onKeyChange: this.updateParamKey.bind(this),
             onValueChange: this.updateParamValue.bind(this),
             onRemove: this.removeParam.bind(this),
@@ -1780,42 +1851,9 @@ class ParamsEditor {
         return;
       }
 
-      // More efficient URL building for large parameter sets
+      // Apply writes currentParams in their current order, including drag order.
       const url = new URL(this.originalUrl);
-
-      // Clear all existing search parameters
-      url.search = "";
-
-      // Build parameters string directly for very large parameter sets
-      if (this.currentParams.length > 100) {
-        // For very large parameter sets, build query string manually to avoid URLSearchParams overhead
-        const paramParts: string[] = [];
-        for (const param of this.currentParams) {
-          if (param.key.trim()) {
-            paramParts.push(
-              `${encodeURIComponent(param.key)}=${encodeURIComponent(param.value)}`
-            );
-          }
-        }
-
-        url.search = paramParts.length > 0 ? "?" + paramParts.join("&") : "";
-      } else {
-        // Use URLSearchParams for normal sized parameter sets
-        const searchParams = new URLSearchParams();
-
-        // Add each parameter, with proper encoding
-        this.currentParams.forEach((param) => {
-          if (param.key.trim()) {
-            searchParams.append(param.key, param.value);
-          }
-        });
-
-        // Set the search part of the URL
-        const paramString = searchParams.toString();
-        if (paramString) {
-          url.search = "?" + paramString;
-        }
-      }
+      url.search = buildSearch(this.currentParams);
 
       const newUrl = url.toString();
 
@@ -1891,7 +1929,147 @@ class ParamsEditor {
     this.updateParamsCount();
   }
 
+  private dragState: ParamDragState | null = null;
+
+  private onParamPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0 || !canReorderList(this.searchTerm)) return;
+    if (!(event.target instanceof Element)) return;
+
+    const handle = event.target.closest(".param-drag-handle");
+    if (!(handle instanceof HTMLButtonElement)) return;
+    if (handle.getAttribute("aria-disabled") === "true") return;
+
+    const row = handle.closest("tr");
+    if (!(row instanceof HTMLTableRowElement)) return;
+    if (row.dataset.paramIndex === undefined) return;
+
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    row.classList.add("is-dragging");
+    row.setAttribute("aria-grabbed", "true");
+    document.body.classList.add("params-dragging");
+
+    this.dragState = {
+      pointerId: event.pointerId,
+      row,
+      scrollRaf: 0,
+      lastY: event.clientY,
+    };
+    document.addEventListener("pointermove", this.onParamPointerMove);
+    document.addEventListener("pointerup", this.onParamPointerUp);
+    document.addEventListener("pointercancel", this.onParamPointerUp);
+    this.dragState.scrollRaf = requestAnimationFrame(this.autoScrollDrag);
+  };
+
+  private onParamPointerMove = (event: PointerEvent): void => {
+    const state = this.dragState;
+    if (!state || event.pointerId !== state.pointerId) return;
+    state.lastY = event.clientY;
+    this.placeDraggedRow(event.clientY);
+  };
+
+  private onParamPointerUp = (event: PointerEvent): void => {
+    const state = this.dragState;
+    if (!state || event.pointerId !== state.pointerId) return;
+    const row = state.row;
+    this.stopDragTracking();
+    this.commitDragOrder(row);
+  };
+
+  private autoScrollDrag = (): void => {
+    const state = this.dragState;
+    if (!state) return;
+
+    const scroller = document.getElementById("paramsScroll");
+    if (scroller) {
+      const rect = scroller.getBoundingClientRect();
+      const step = autoScrollStep({
+        pointerY: state.lastY,
+        containerTop: rect.top,
+        containerBottom: rect.bottom,
+        scrollTop: scroller.scrollTop,
+        scrollHeight: scroller.scrollHeight,
+        clientHeight: scroller.clientHeight,
+        edge: 36,
+        maxStep: 18,
+      });
+      if (step !== 0) {
+        scroller.scrollTop += step;
+        this.placeDraggedRow(state.lastY);
+      }
+    }
+
+    state.scrollRaf = requestAnimationFrame(this.autoScrollDrag);
+  };
+
+  private placeDraggedRow(pointerY: number): void {
+    const state = this.dragState;
+    if (!state) return;
+    const paramsBody = document.getElementById("paramsBody");
+    if (!paramsBody) return;
+
+    const rows = [
+      ...paramsBody.querySelectorAll<HTMLTableRowElement>(
+        "tr[data-param-index]"
+      ),
+    ];
+    const fromIndex = rows.indexOf(state.row);
+    if (fromIndex < 0) return;
+
+    const boxes = rows.map((row) => {
+      const rect = row.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    });
+    const newIndex = nextDragIndex(boxes, fromIndex, pointerY);
+    if (newIndex === fromIndex) return;
+
+    const target = rows[newIndex];
+    if (newIndex > fromIndex) target.after(state.row);
+    else target.before(state.row);
+  };
+
+  private stopDragTracking(): void {
+    const state = this.dragState;
+    if (!state) return;
+    cancelAnimationFrame(state.scrollRaf);
+    document.removeEventListener("pointermove", this.onParamPointerMove);
+    document.removeEventListener("pointerup", this.onParamPointerUp);
+    document.removeEventListener("pointercancel", this.onParamPointerUp);
+    state.row.classList.remove("is-dragging");
+    state.row.removeAttribute("aria-grabbed");
+    document.body.classList.remove("params-dragging");
+    this.dragState = null;
+  }
+
+  private commitDragOrder(row: HTMLTableRowElement): void {
+    if (!row.isConnected) return;
+    const paramsBody = document.getElementById("paramsBody");
+    if (!paramsBody) return;
+
+    const order = [
+      ...paramsBody.querySelectorAll<HTMLTableRowElement>(
+        "tr[data-param-index]"
+      ),
+    ].map((paramRow) => Number(paramRow.dataset.paramIndex));
+
+    if (
+      order.length !== this.currentParams.length ||
+      order.every((index, position) => index === position)
+    ) {
+      return;
+    }
+
+    const next = reorderByIndexOrder(this.currentParams, order);
+    if (!next) return;
+    this.currentParams = next;
+    this.cachedUnfilteredFragment = null;
+    this.renderParams();
+  }
+
   private setupEventListeners() {
+    const paramsBody = document.getElementById("paramsBody");
+    paramsBody?.addEventListener("pointerdown", this.onParamPointerDown);
+
     // Use a more robust method to ensure event listeners are properly attached
     this.attachEventListener("refreshBtn", "click", () => {
       // First reload the current URL from the tab
@@ -2056,14 +2234,14 @@ class ParamsEditor {
         if (!param) return;
 
         let copyText: string | undefined;
-        const keyInput = currentRow.querySelector("input");
+        const keyInput = currentRow.querySelector(".param-key-cell input");
 
         const shouldCopyKey = activeElement === keyInput;
 
         if (shouldCopyKey) {
           copyText = `${param.key}=${param.value}`;
         } else {
-          const valueCell = currentRow.querySelectorAll("td")[1];
+          const valueCell = currentRow.querySelector(".param-value-cell");
           if (valueCell && valueCell.contains(activeElement)) {
             copyText = param.value;
           }
@@ -2241,7 +2419,7 @@ class ParamsEditor {
     if (index >= 0 && index < rows.length) {
       const row = rows[index];
       // The value input is in the second 'td'.
-      const valueCell = row.querySelectorAll("td")[1];
+      const valueCell = row.querySelector(".param-value-cell");
       if (valueCell) {
         const valueInput = valueCell.querySelector("input");
         if (valueInput instanceof HTMLInputElement) {
