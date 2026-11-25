@@ -1,6 +1,6 @@
 # CI/CD
 
-Live Crit review: pending — the PR description has the shared review URL once Crit has published it.
+Live Crit review: https://crit.md/r/GcDuw7Uwmmy7Ak19EPyGh
 
 Chrome Web Store deploys for Params Editor. Nothing in this pipeline changes extension behavior. It typechecks, tests, builds, bumps the version, and uploads the zip.
 
