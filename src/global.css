@@ -1,3 +1,65 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+#paramsScroll {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #9ca3af transparent;
+}
+
+#paramsScroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+#paramsScroll::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+}
+
+.param-drag-handle {
+  cursor: grab;
+  touch-action: none;
+  color: #9ca3af;
+  user-select: none;
+}
+
+.param-drag-handle:hover {
+  color: #4b5563;
+  background: #f3f4f6;
+}
+
+.param-drag-handle[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.param-drag-handle[aria-disabled="true"]:hover {
+  color: #9ca3af;
+  background: transparent;
+}
+
+body.params-dragging,
+body.params-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+#paramsBody tr.is-dragging {
+  position: relative;
+  z-index: 2;
+}
+
+#paramsBody tr.is-dragging td {
+  background-color: #bbf7d0;
+  box-shadow: inset 0 2px 0 #059669, inset 0 -2px 0 #059669;
+}
+
+#paramsBody tr.is-dragging td:first-child {
+  box-shadow: inset 3px 0 0 #047857, inset 0 2px 0 #059669, inset 0 -2px 0 #059669;
+}
+
+#paramsBody tr.is-dragging input {
+  background-color: #ecfdf5;
+  border-color: #059669;
+}

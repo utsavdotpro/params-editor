@@ -6,7 +6,7 @@
     <title>Query Param Editor</title>
   </head>
   <body class="w-[500px] p-3 pt-0 font-sans flex flex-col h-screen m-0">
-    <div class="flex flex-col flex-1 gap-2 relative">
+    <div class="flex flex-col flex-1 gap-2 relative min-w-0">
       <div
         class="sticky top-0 bg-white z-10 flex flex-col gap-2 py-3 border-b border-gray-200"
       >
@@ -56,14 +56,19 @@
         </div>
       </div>
 
-      <div class="overflow-y-auto">
+      <div id="paramsScroll" class="overflow-y-auto max-h-[340px]">
         <table
           class="w-full border-collapse table-fixed flex-1 text-sm"
           id="paramsTable"
         >
           <thead>
             <tr>
-              <th class="p-1 text-left w-[30%]">Key</th>
+              <th class="p-1 text-left w-[30%]">
+                <span class="inline-flex items-center gap-1">
+                  <span class="w-6 shrink-0" aria-hidden="true"></span>
+                  Key
+                </span>
+              </th>
               <th class="p-1 text-left w-[65%]">Value</th>
               <th class="p-1 text-center w-[5%]"></th>
             </tr>
@@ -77,18 +82,18 @@
       <div
         class="flex gap-2 sticky bottom-0 bg-white py-3 z-10 border-t border-gray-200"
       >
-        <div class="flex-1">
-          <div class="flex gap-2 text-sm">
+        <div class="flex-1 min-w-0">
+          <div class="flex w-full gap-2 text-sm">
             <input
               type="text"
-              class="flex-1 p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500"
+              class="flex-1 min-w-0 p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500"
               id="newParamKey"
               placeholder="Key"
             />
 
             <input
               type="text"
-              class="flex-1 p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500"
+              class="flex-1 min-w-0 p-1.5 border border-gray-300 rounded focus:outline-none focus:border-green-500"
               id="newParamValue"
               placeholder="Value"
             />
