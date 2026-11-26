@@ -45,6 +45,29 @@ test("refuses to bump when package.json and the manifest disagree", () => {
   assert.equal(JSON.parse(fs.readFileSync(manifestPath, "utf8")).version, "1.2.2");
 });
 
+test("a lower VERSION_FLOOR does not decrease the current version", () => {
+  const { manifestPath, packagePath } = fixture();
+  const result = bumpVersionFiles({
+    manifestPath,
+    packagePath,
+    bumpType: "patch",
+    floor: "1.0.0",
+  });
+  assert.equal(result.next, "1.2.3");
+});
+
+test("VERSION_FLOOR raises a stale checkout before the patch bump", () => {
+  const { manifestPath, packagePath } = fixture();
+  const result = bumpVersionFiles({
+    manifestPath,
+    packagePath,
+    bumpType: "patch",
+    floor: "1.4.0",
+  });
+  assert.deepEqual(result, { previous: "1.4.0", next: "1.4.1", bumpType: "patch" });
+  assert.equal(JSON.parse(fs.readFileSync(packagePath, "utf8")).version, "1.4.1");
+});
+
 test("CLI prints the bump and exits 0", () => {
   const { dir, manifestPath, packagePath } = fixture();
   const result = spawnSync(process.execPath, ["scripts/bump-version.mjs", "minor"], {

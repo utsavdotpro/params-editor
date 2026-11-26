@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { bumpSemver, setVersionInJsonText } from "./version-lib.mjs";
+import { bumpSemver, compareVersions, setVersionInJsonText } from "./version-lib.mjs";
 
 const manifestPath = process.env.MANIFEST_PATH || "public/manifest.json";
 const packagePath = process.env.PACKAGE_PATH || "package.json";
@@ -20,9 +20,10 @@ export function bumpVersionFiles({
   manifestPath: manifestFile = manifestPath,
   packagePath: packageFile = packagePath,
   bumpType: type = bumpType,
+  floor = process.env.VERSION_FLOOR || "",
 } = {}) {
-  const manifest = readJsonVersion(manifestFile);
-  const packageJson = readJsonVersion(packageFile);
+  let manifest = readJsonVersion(manifestFile);
+  let packageJson = readJsonVersion(packageFile);
 
   if (manifest.version !== packageJson.version) {
     throw new Error(
@@ -30,11 +31,20 @@ export function bumpVersionFiles({
     );
   }
 
-  const nextVersion = bumpSemver(manifest.version, type);
+  let baseline = manifest.version;
+  if (floor && compareVersions(floor, baseline) > 0) {
+    fs.writeFileSync(manifestFile, setVersionInJsonText(manifest.text, floor));
+    fs.writeFileSync(packageFile, setVersionInJsonText(packageJson.text, floor));
+    manifest = readJsonVersion(manifestFile);
+    packageJson = readJsonVersion(packageFile);
+    baseline = floor;
+  }
+
+  const nextVersion = bumpSemver(baseline, type);
   fs.writeFileSync(manifestFile, setVersionInJsonText(manifest.text, nextVersion));
   fs.writeFileSync(packageFile, setVersionInJsonText(packageJson.text, nextVersion));
 
-  return { previous: manifest.version, next: nextVersion, bumpType: type };
+  return { previous: baseline, next: nextVersion, bumpType: type };
 }
 
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);

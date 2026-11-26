@@ -59,6 +59,6 @@ Production packages for the Chrome Web Store use `pnpm run build:prod` (`webpack
 
 ## CI/CD
 
-Pull requests and pushes to `main` run typecheck, tests, and a production build. Releases are published to the Chrome Web Store from the **Release** workflow, which bumps `package.json` and `public/manifest.json` together.
+Pull requests and pushes to `main` run typecheck, tests, and a production build. A push to `main` also patch-bumps `package.json` and `public/manifest.json` and submits that build to the Chrome Web Store.
 
 Setup, the secret list, and how to do a first upload-only release are in [docs/ci-cd.md](docs/ci-cd.md).

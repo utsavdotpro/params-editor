@@ -1,13 +1,14 @@
 name: Release
 
-# Direct Chrome Web Store deploy.
-# workflow_dispatch bumps package.json + public/manifest.json, builds, uploads,
-# and only then commits the bump to main and tags vX.Y.Z.
-# A human tag push v* deploys the version already committed on that tag.
-# Tags created by this workflow are pushed by github-actions[bot] and do not
-# deploy a second time.
+# Push to main patch-bumps, uploads, and submits the Chrome Web Store item for review.
+# workflow_dispatch is the manual path for minor/major, upload-only, or dry run.
+# The release commit is skipped on the next push by actor and by commit message.
+# Tag pushes do not deploy. This workflow creates the tag after a successful upload.
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       bump:
@@ -29,9 +30,6 @@ on:
         description: Package and validate secrets only. Do not upload, commit, or tag.
         type: boolean
         default: false
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
@@ -44,13 +42,23 @@ jobs:
   release:
     name: Package and publish
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'
+    # Both guards. A bot release commit must not deploy again.
+    # GitHub also skips this push trigger when the head commit contains
+    # [skip ci], [ci skip], [no ci], [skip actions], or [actions skip].
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        github.actor != 'github-actions[bot]' &&
+        !startsWith(github.event.head_commit.message, 'chore: release v')
+      )
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
 
       - name: Require a dispatch from main
         if: github.event_name == 'workflow_dispatch'
@@ -75,21 +83,28 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Record pre-bump version
-        if: github.event_name == 'workflow_dispatch'
         id: before
         run: echo "version=$(node -p "require('./public/manifest.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Bump version
-        if: github.event_name == 'workflow_dispatch'
-        run: node scripts/bump-version.mjs "${{ inputs.bump }}"
-
-      - name: Fail if the dispatch did not increase the version
-        if: github.event_name == 'workflow_dispatch'
-        run: node scripts/assert-version.mjs --previous "${{ steps.before.outputs.version }}"
-
-      - name: Fail if the tag was not a strict version bump
+      - name: Read the version already on main
         if: github.event_name == 'push'
-        run: node scripts/assert-version.mjs --equals "${GITHUB_REF_NAME}" --greater-than-parent
+        id: floor
+        run: |
+          git fetch origin main
+          MAIN_VERSION="$(git show origin/main:public/manifest.json | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>console.log(JSON.parse(s).version))')"
+          echo "version=${MAIN_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version
+        env:
+          VERSION_FLOOR: ${{ github.event_name == 'push' && steps.floor.outputs.version || '' }}
+        run: node scripts/bump-version.mjs "${{ github.event_name == 'workflow_dispatch' && inputs.bump || 'patch' }}"
+
+      - name: Fail if the version was not increased
+        run: |
+          node scripts/assert-version.mjs --previous "${{ steps.before.outputs.version }}"
+          if [ -n "${{ steps.floor.outputs.version }}" ]; then
+            node scripts/assert-version.mjs --previous "${{ steps.floor.outputs.version }}"
+          fi
 
       - name: Typecheck
         run: pnpm run typecheck
@@ -140,7 +155,7 @@ jobs:
           exit "$status"
 
       - name: Commit bump and tag
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.dry_run != true && steps.cws.outputs.uploaded == 'true'
+        if: always() && steps.cws.outputs.uploaded == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run != true))
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
@@ -148,7 +163,10 @@ jobs:
           git add public/manifest.json package.json
           git commit -m "chore: release v${VERSION}"
           git tag -a "v${VERSION}" -m "Release v${VERSION}"
-          git push origin HEAD:main
+          git push origin HEAD:main || {
+            echo "Upload of v${VERSION} was accepted, but origin/main moved. Refusing a non-fast-forward release commit. Do not upload v${VERSION} again."
+            exit 1
+          }
           git push origin "v${VERSION}"
 
       - name: GitHub Release
@@ -163,7 +181,8 @@ jobs:
             "" \
             "- Publish target: ${TARGET}" \
             "- Package: params-editor-${VERSION}.zip (manifest.json at the zip root)" \
-            "- API: Chrome Web Store API v2")
+            "- API: Chrome Web Store API v2" \
+            "- publish submits the item for review. It goes live after Google approves it.")
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             gh release upload "v${VERSION}" "params-editor-${VERSION}.zip" --clobber
           else
