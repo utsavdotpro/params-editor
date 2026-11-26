@@ -1,6 +1,6 @@
 # CI/CD
 
-Live Crit review: https://crit.md/r/GcDuw7Uwmmy7Ak19EPyGh
+Live Crit review: https://crit.md/r/O8Ydd9O_3918CFFCBCgRt
 
 Chrome Web Store deploys for Params Editor. Nothing in this pipeline changes extension behavior. It typechecks, tests, builds, bumps the version, and uploads the zip.
 
