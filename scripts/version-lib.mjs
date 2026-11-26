@@ -81,6 +81,40 @@ export function setVersionInJsonText(text, version) {
   return next;
 }
 
+export function nextDeployVersion(repoVersion, storeVersions, bumpType) {
+  parseVersion(repoVersion);
+  if (storeVersions != null && !Array.isArray(storeVersions)) {
+    throw new Error("Store versions must be a list. Refusing to guess a deploy version.");
+  }
+  const present = [];
+  for (const version of storeVersions ?? []) {
+    if (version == null || String(version).trim() === "") continue;
+    parseVersion(version);
+    present.push(String(version).trim());
+  }
+  const store = highestVersion(present);
+  const baseline = store && compareVersions(store, repoVersion) > 0 ? store : repoVersion;
+  return {
+    repo: repoVersion,
+    store,
+    baseline,
+    next: bumpSemver(baseline, bumpType),
+  };
+}
+
+export function crxVersionsFromStatus(status) {
+  if (!status || typeof status !== "object" || Array.isArray(status)) {
+    throw new Error("Chrome Web Store status response was empty. Refusing to guess a deploy version.");
+  }
+  const channels = [
+    ...(status.publishedItemRevisionStatus?.distributionChannels ?? []),
+    ...(status.submittedItemRevisionStatus?.distributionChannels ?? []),
+  ];
+  return channels
+    .map((channel) => channel?.crxVersion)
+    .filter((version) => version != null && String(version).trim() !== "");
+}
+
 export function highestVersion(versions) {
   const present = versions.filter((version) => typeof version === "string" && version.trim() !== "");
   if (present.length === 0) return null;

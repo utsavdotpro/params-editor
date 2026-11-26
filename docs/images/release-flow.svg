@@ -17,9 +17,9 @@
   <text x="611" y="96" text-anchor="middle" font-size="14">CWS API v2</text>
   <text x="611" y="116" text-anchor="middle" font-size="12">upload, then publish</text>
   <rect class="box" x="726" y="70" width="230" height="64" rx="8"/>
-  <text x="841" y="96" text-anchor="middle" font-size="14">commit, tag, GitHub Release</text>
-  <text x="841" y="116" text-anchor="middle" font-size="12">only after upload is accepted</text>
+  <text x="841" y="96" text-anchor="middle" font-size="14">submit for review</text>
+  <text x="841" y="116" text-anchor="middle" font-size="12">no commit, tag, or release</text>
   <path d="M156 102 H196 M326 102 H366 M496 102 H536 M686 102 H726" stroke="#111827" stroke-width="1.5"/>
   <text x="16" y="36" font-size="16">Release path</text>
-  <text x="16" y="188" font-size="13">A bot commit starting with "chore: release v" does not deploy again. Dry run does not upload or push.</text>
+  <text x="16" y="188" font-size="13">Next version is one bump above max(repo, store). The runner does not write back to git.</text>
 </svg>

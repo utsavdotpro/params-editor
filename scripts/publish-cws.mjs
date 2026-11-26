@@ -223,6 +223,24 @@ async function fetchStatus(token, env) {
   });
 }
 
+export async function readStoreStatus(env = process.env) {
+  const problems = secretProblems(env);
+  if (problems.missing.length > 0 || problems.invalid.length > 0) {
+    const error = new Error(formatSecretProblems(problems));
+    error.secretProblems = problems;
+    throw error;
+  }
+  const token = await accessToken(env);
+  try {
+    return await fetchStatus(token, env);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Could not read the Chrome Web Store item, so the next version was not computed. Refusing to guess.\n${message}`,
+    );
+  }
+}
+
 async function waitForUpload(token, env, initial) {
   if (finishedState(initial.uploadState) || initial.crxVersion) return initial;
   if (initial.uploadState === "FAILED") {
@@ -280,8 +298,8 @@ async function main() {
   console.log(`Package ${zipPath} version ${manifestVersion} target ${target}`);
 
   if (dryRun) {
-    console.log("Dry run: secrets are present. Not calling the Chrome Web Store.");
-    console.log("Would mint an access token from CHROME_SERVICE_ACCOUNT_JSON, then POST the zip.");
+    console.log("Dry run: secrets are present. Not uploading.");
+    console.log("The deploy version was resolved from the store before this step.");
     console.log(`Would POST the zip to ${uploadUrl(process.env)}`);
     if (target === "publish") {
       console.log(`Would then POST :publish with publishType DEFAULT_PUBLISH (submit for review, then publish on approval).`);
@@ -329,11 +347,6 @@ async function main() {
     );
   }
 
-  fs.writeFileSync(
-    ".cws-upload-result.json",
-    `${JSON.stringify({ uploaded: true, version: manifestVersion, target }, null, 2)}\n`,
-  );
-
   if (target === "upload-only") {
     console.log("Upload finished. Skipped :publish because the target is upload-only.");
     console.log("The new package is on the item and has not been submitted for review. Check the developer dashboard, then run this workflow again with publish target \"publish\" only after you intend to submit a newer version, or publish this draft from the dashboard.");
@@ -353,7 +366,7 @@ async function main() {
     console.log("DEFAULT_PUBLISH submits the item for review and publishes it to the existing audience after Google approves it. This does not skip review.");
   } catch (error) {
     fail(
-      `Upload of ${manifestVersion} succeeded, but publish failed. Do not reuse this version. The result file .cws-upload-result.json records the upload.\n${explainStoreError(error)}`,
+      `Upload of ${manifestVersion} succeeded, but publish failed. That version is on the store. The next run reads it from the store and chooses a higher one.\n${explainStoreError(error)}`,
     );
   }
 }

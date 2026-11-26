@@ -12,7 +12,8 @@ Chrome Web Store deploys for Params Editor. Nothing in this pipeline changes ext
 | --- | --- |
 | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | On every pull request and every push to `main`: install, typecheck, test, production build. Read-only token. |
 | [`.github/workflows/release.yml`](../.github/workflows/release.yml) | On every push to `main`: patch-bump, build, upload, and submit for review. Manual dispatch remains for minor, major, upload-only, and dry run. |
-| [`scripts/bump-version.mjs`](../scripts/bump-version.mjs) | One bump for `public/manifest.json` and `package.json`. Local and CI use this script. |
+| [`scripts/bump-version.mjs`](../scripts/bump-version.mjs) | Writes the next version into both version files in the working tree. The release job does not commit that write. |
+| [`scripts/resolve-deploy-version.mjs`](../scripts/resolve-deploy-version.mjs) | Reads the store item and sets the runner version to one bump above `max(repo, store)`. |
 | [`scripts/assert-version.mjs`](../scripts/assert-version.mjs) | Fails if the two version fields differ, or if the new version is not strictly greater. |
 | [`scripts/package-extension.mjs`](../scripts/package-extension.mjs) | Zips `dist/` so `manifest.json` is at the archive root. |
 | [`scripts/publish-cws.mjs`](../scripts/publish-cws.mjs) | Service-account JWT, then Chrome Web Store API **v2**. |
@@ -24,60 +25,44 @@ API choice: Chrome Web Store API v2 (`chromewebstore.googleapis.com`). Google tu
 
 The store API cannot create the first listing. Upload the first package in the [developer dashboard](https://chrome.google.com/webstore/devconsole), including the store listing and privacy tabs, before this workflow can update it.
 
-**Merging this change is a push to `main`.** That push patch-bumps, uploads, and submits the item for review. The three repository secrets are already set. Do not merge until that first automatic release is intended.
+**Merging this change is a push to `main`.** That push reads the live store version, patch-bumps above it in the runner, uploads, and submits the item for review. The three repository secrets are already set. Nothing is committed back. Do not merge until that first automatic release is intended.
 
 ## What a push to main does
 
-A normal release is a push to `main`. Nobody runs the workflow by hand.
+A normal release is a push to `main`. Nobody runs the workflow by hand. The workflow does not push commits, tags, or GitHub Releases. Its token is read-only, so a deploy cannot start another deploy.
 
-1. The runner patch-bumps `public/manifest.json` and `package.json` with `scripts/bump-version.mjs`. If `origin/main` already has a higher version, the bump starts from that version so queued pushes stay strictly increasing.
-2. It fails if the result is not strictly greater than the version in the checked-out commit.
-3. It typechecks, tests, production-builds, and zips `dist/`.
-4. It checks the three secrets. Missing or malformed values stop here with their names.
-5. It uploads the zip, then calls `:publish` with `DEFAULT_PUBLISH`. That submits the item for review. It goes live after Google approves it. Review is not skipped.
-6. Only after the store accepts the upload does the workflow commit `chore: release vX.Y.Z` to `main`, create annotated tag `vX.Y.Z`, and open a GitHub Release with the zip attached.
-
-A failed upload does not commit and does not move `main`.
-
-If the upload is accepted and `:publish` then fails, the script still writes `.cws-upload-result.json`. The workflow commits and tags that version, and the job stays red. That version is already on the store. Do not try to upload it again. Fix the publish error in the dashboard, or push another commit and let the next patch bump ship a newer build.
+1. It typechecks and tests.
+2. It calls `fetchStatus` on the Chrome Web Store item. If that call fails, or a returned version is malformed, the run stops. It does not invent a version.
+3. The next version is one bump above `max(repo version, highest store version)`. A push uses `patch`. The highest store version is the greater of the published package and any submitted package. If the item has neither, the repo version is the floor.
+4. That version is written to `package.json` and `public/manifest.json` in the runner only. The repository stays at its committed version.
+5. It production-builds and zips `dist/`.
+6. It uploads the zip, then calls `:publish` with `DEFAULT_PUBLISH`. That submits the item for review. It goes live after Google approves it. Review is not skipped.
 
 `ci.yml` still runs on pull requests and on pushes to `main`. Release repeats typecheck, test, and the production build before it uploads. Both running on `main` is expected.
 
-Pushes share the concurrency group `chrome-web-store-release` with `cancel-in-progress: false`, so a second push waits instead of uploading beside the first. Each push still produces its own version. Do not stack pushes while a release is in progress: if `main` moves before the release commit is pushed, that git push is not fast-forward, the store may already have the version, and the job fails without rewriting `main`.
-
-### Loop guard
-
-The release commit must not deploy again. The job runs on a `main` push only when both of these are true:
-
-- `github.actor` is not `github-actions[bot]`
-- the head commit message does not start with `chore: release v`
-
-The commit created above uses that actor and that message, so it does not start another upload. Tag pushes are not a trigger. The workflow creates `vX.Y.Z` after a successful upload; pushing a tag by hand does not deploy.
+Pushes share the concurrency group `chrome-web-store-release` with `cancel-in-progress: false`, so a second push waits. Each push asks the store for the current version, so a queued run bumps above whatever the previous upload already submitted.
 
 ### Skip a deploy
 
-GitHub does not start `push` or `pull_request` workflows when the head commit message contains any of `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, or `[actions skip]`. That includes this Release workflow's `push` trigger and `ci.yml`. It does not apply to **Run workflow**. A manual dispatch still runs if you start it.
+GitHub does not start `push` or `pull_request` workflows when the head commit message contains any of `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, or `[actions skip]`. That includes this Release workflow's `push` trigger and `ci.yml`. It does not apply to **Run workflow**.
 
-### Minor or major
+### Minor, major, upload-only, dry run
 
-Actions → **Release** → **Run workflow** on `main`. Choose `minor` or `major`. Default publish target is `publish` (submit for review). `upload-only` uploads and does not call `:publish`, so the package is not submitted. Dry run checks secrets and builds the zip, then stops before the store and before the git push. A dry run with a missing secret fails and lists the names.
+Actions → **Release** → **Run workflow** on `main`.
 
-Manual equivalent of the bump, from a clean `main` checkout:
-
-```bash
-pnpm run bump:version -- patch   # or minor, or major
-```
-
-That writes both files. Do not upload a package whose manifest version is less than or equal to the version already on the store. The store rejects it, and the script now refuses before the upload when `fetchStatus` already shows that version.
+- `minor` or `major` applies that bump to `max(repo, store)`. A push always uses `patch`.
+- `upload-only` uploads and does not call `:publish`.
+- Dry run checks the three secrets and, when they are usable, reads the store and prints the version it would upload. It still builds the zip. It does not upload. Missing secrets fail with their names, and the log says the next version was not computed.
 
 ## Version rules
 
-- Both files store `major.minor.patch`. The bump script refuses any other shape, and it refuses to run if the two files disagree.
+- The committed version in `package.json` and `public/manifest.json` is a floor. It is not the version that gets uploaded.
+- Deploy version = bump(`max(repo, store)`), where store is the highest `crxVersion` on the published or submitted package.
 - Compare segments as integers. `1.10.0` is greater than `1.9.0`.
-- Every store upload needs a strictly greater version than the published package and any package already submitted.
-- Webpack copies `public/manifest.json` into `dist/manifest.json`. Bump first, then `pnpm run build:prod`, then zip. The packager fails if those three versions differ.
+- Both files must already match before the run. The bump script refuses a mismatch.
+- Webpack copies the runner's `public/manifest.json` into `dist/manifest.json`. Resolve the version, then `pnpm run build:prod`, then zip.
 - The zip name is `params-editor-<version>.zip`.
-- Do not edit the version by hand in one file only.
+- `pnpm run bump:version` only edits your checkout. It does not change what the next deploy uploads unless that edit is committed and is higher than the store.
 
 `pnpm run build` is not the store build. It stays `mode: development` with inline source maps, which is the previous local behavior.
 
@@ -93,9 +78,7 @@ GitHub → **Settings** → **Secrets and variables** → **Actions** → **New 
 | `CHROME_PUBLISHER_ID` | Publisher id from the developer dashboard. Required by API v2. |
 | `CHROME_SERVICE_ACCOUNT_JSON` | Full contents of the service account JSON key file. Not a path and not base64. |
 
-The workflow also needs **Settings → Actions → General → Workflow permissions → Read and write**. The default read-only token cannot push the release commit or the tag.
-
-If `main` is protected, allow `github-actions[bot]` to push to `main` and to create tags, or the commit step will fail after a successful upload. That still consumes the store version. Set the bypass before the first real publish.
+The workflow only reads the repository. It does not need permission to push.
 
 No other secrets are required. Do not add an access token. Each release mints one from the service account key and drops it when the job ends. The key keeps working until you delete it in IAM. There is no consent screen.
 
@@ -140,7 +123,7 @@ That id is not the extension id. v2 returns a confusing 404 when they are swappe
 
 ## Optional upload-only check
 
-Normal pushes submit for review. To upload without submitting, use **Run workflow** with publish target `upload-only`. That still bump-commits after the store accepts the zip. A dry run does not.
+Normal pushes submit for review. To upload without submitting, use **Run workflow** with publish target `upload-only`. That does not commit anything. A dry run does not upload.
 
 `DEFAULT_PUBLISH` submits the item for review and, after Google approves it, publishes to the audience already configured on the item. It does not skip review. The API keeps the current visibility. If you changed visibility in the dashboard, Google requires one manual publish with the new visibility before the API will publish again.
 
@@ -150,7 +133,7 @@ You cannot republish an older version number. The store version only moves forwa
 
 - Still in review, not yet published: dashboard, or `POST https://chromewebstore.googleapis.com/v2/publishers/PUBLISHER_ID/items/EXTENSION_ID:cancelSubmission` with the same Bearer token. This workflow does not call that.
 - Already published: `POST https://chromewebstore.googleapis.com/v2/publishers/PUBLISHER_ID/items/EXTENSION_ID:rollback` with JSON `targetCrxVersion` (the older published package), `newVersion` (strictly greater than the package that is live now), and `rollbackReason`. `validateOnly: true` checks the call without rolling back. The old package is published again under the new version number.
-- Code fix: push the fix to `main`. That push patch-bumps and submits a new build. Do not retag the bad version.
+- Code fix: push the fix to `main`. That push reads the store version, patch-bumps above it, and submits a new build.
 
 ## Local check
 
@@ -182,12 +165,11 @@ That exits 1 and prints the three secret names. It does not call Google.
 | `Service account token exchange failed` | The key was deleted or disabled in IAM, or the service account email is not added under Developer Dashboard → Account. Create a new JSON key only if the old one is gone. A valid key does not expire on its own. |
 | `Could not read the current store item` / 404 | Publisher id and extension id are swapped, the service account is not linked to that publisher, or the first listing was never created in the dashboard. |
 | `versions must strictly increase` before upload | The manifest was not bumped past the version already published or submitted. Dispatch again with a bump, or remove the stuck submission. |
-| Store error that mentions version, during upload | Same rule, caught by the API. The workflow has not committed if `.cws-upload-result.json` was not written. |
-| Upload succeeded, publish failed | The version is on the item. The workflow commits it when the result file exists. Publish from the dashboard, or cancel and ship a higher version. Check whether visibility was changed and needs one manual publish. |
+| `Next version was not computed` | The store lookup failed or the secrets are missing. The run did not invent a version. Fix the named secrets or the item id, then rerun. |
+| Store error that mentions version, during upload | The package was not above the published or submitted version. The next run reads the store again. |
+| Upload succeeded, publish failed | That version is already on the item. The next push reads it and chooses a higher one. You can also publish the draft from the dashboard. Check whether visibility was changed and needs one manual publish. |
 | `Run this workflow from the main branch` | The dispatch ref was not `main`. Re-run and select `main`. |
-| A push to `main` did not deploy | The head commit message starts with `chore: release v`, the actor is `github-actions[bot]`, or the message contains `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, or `[actions skip]`. GitHub skips the push trigger for those skip strings. |
-| Release commit did not land, upload already accepted | `main` moved during the job, so the version commit was not a fast-forward. That version is on the store. Push a new commit for a higher version. |
-| `github-actions[bot]` cannot push | Workflow permissions are still read-only, or branch protection blocked the bot. The store may already have this version. |
+| A push to `main` did not deploy | The commit message contains `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, or `[actions skip]`. GitHub does not start the push trigger for those strings. |
 | Zip rejected for layout | `manifest.json` must be at the root of the zip. `scripts/package-extension.mjs` builds that layout from `dist/`. Do not zip the `dist` folder itself. |
 
 ![Local dry run: bump, test, production build, zip listing](images/local-dry-run.png)
