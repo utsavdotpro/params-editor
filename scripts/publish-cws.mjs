@@ -1,19 +1,15 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
 import { assertStrictlyGreater, highestVersion } from "./version-lib.mjs";
 
-const REQUIRED_SECRETS = [
-  "CHROME_EXTENSION_ID",
-  "CHROME_PUBLISHER_ID",
-  "CHROME_CLIENT_ID",
-  "CHROME_CLIENT_SECRET",
-  "CHROME_REFRESH_TOKEN",
-];
+const REQUIRED_SECRETS = ["CHROME_EXTENSION_ID", "CHROME_PUBLISHER_ID", "CHROME_SERVICE_ACCOUNT_JSON"];
 
 const EXTENSION_ID = /^[a-p]{32}$/;
 const PUBLISHER_ID = /^[A-Za-z0-9_-]{4,128}$/;
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const STORE_SCOPE = "https://www.googleapis.com/auth/chromewebstore";
+const DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token";
 
 export function secretProblems(env = process.env) {
   const missing = REQUIRED_SECRETS.filter((name) => !String(env[name] ?? "").trim());
@@ -33,7 +29,76 @@ export function secretProblems(env = process.env) {
     );
   }
 
+  const serviceAccountRaw = String(env.CHROME_SERVICE_ACCOUNT_JSON ?? "");
+  if (serviceAccountRaw.trim()) {
+    const parsed = parseServiceAccount(serviceAccountRaw);
+    if (parsed.error) invalid.push(parsed.error);
+  }
+
   return { missing, invalid };
+}
+
+export function parseServiceAccount(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { error: "CHROME_SERVICE_ACCOUNT_JSON is not valid JSON. Paste the full service account key file." };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { error: "CHROME_SERVICE_ACCOUNT_JSON must be a JSON object." };
+  }
+  if (parsed.type !== "service_account") {
+    return { error: 'CHROME_SERVICE_ACCOUNT_JSON must have "type": "service_account".' };
+  }
+  if (typeof parsed.client_email !== "string" || !parsed.client_email.includes("@")) {
+    return { error: "CHROME_SERVICE_ACCOUNT_JSON is missing client_email." };
+  }
+  if (typeof parsed.private_key !== "string" || !parsed.private_key.includes("PRIVATE KEY")) {
+    return { error: "CHROME_SERVICE_ACCOUNT_JSON is missing private_key." };
+  }
+  try {
+    crypto.createPrivateKey(parsed.private_key);
+  } catch {
+    return { error: "CHROME_SERVICE_ACCOUNT_JSON has a private_key Node cannot load. Paste the full JSON key file." };
+  }
+  const tokenUri =
+    typeof parsed.token_uri === "string" && parsed.token_uri.startsWith("https://")
+      ? parsed.token_uri
+      : DEFAULT_TOKEN_URI;
+  return {
+    account: {
+      client_email: parsed.client_email,
+      private_key: parsed.private_key,
+      token_uri: tokenUri,
+    },
+  };
+}
+
+function base64url(value) {
+  const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value);
+  return buffer.toString("base64url");
+}
+
+export function signServiceAccountJwt(account, nowSeconds = Math.floor(Date.now() / 1000)) {
+  const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = base64url(
+    JSON.stringify({
+      iss: account.client_email,
+      scope: STORE_SCOPE,
+      aud: account.token_uri,
+      iat: nowSeconds,
+      exp: nowSeconds + 3600,
+    }),
+  );
+  const signingInput = `${header}.${payload}`;
+  let signature;
+  try {
+    signature = crypto.createSign("RSA-SHA256").update(signingInput).end().sign(account.private_key);
+  } catch {
+    throw new Error("CHROME_SERVICE_ACCOUNT_JSON private_key could not sign the request.");
+  }
+  return `${signingInput}.${base64url(signature)}`;
 }
 
 export function formatSecretProblems({ missing, invalid }) {
@@ -44,7 +109,7 @@ export function formatSecretProblems({ missing, invalid }) {
     lines.push("Add them under Settings → Secrets and variables → Actions. See docs/ci-cd.md.");
   }
   if (invalid.length > 0) {
-    lines.push("Chrome Web Store id secrets are set, but they do not look usable:");
+    lines.push("Chrome Web Store secrets are set, but they do not look usable:");
     for (const line of invalid) lines.push(`  - ${line}`);
   }
   return lines.join("\n");
@@ -94,32 +159,40 @@ async function requestJson(url, options) {
   return body.json ?? {};
 }
 
+function safeTokenError(message) {
+  if (/PRIVATE KEY|BEGIN |client_email|private_key/i.test(message)) {
+    return "Google rejected the service account token request.";
+  }
+  return message.slice(0, 500);
+}
+
 async function accessToken(env) {
+  const parsed = parseServiceAccount(env.CHROME_SERVICE_ACCOUNT_JSON);
+  if (parsed.error) fail(parsed.error);
+
+  const assertion = signServiceAccountJwt(parsed.account);
   const payload = new URLSearchParams({
-    client_id: env.CHROME_CLIENT_ID.trim(),
-    client_secret: env.CHROME_CLIENT_SECRET.trim(),
-    refresh_token: env.CHROME_REFRESH_TOKEN.trim(),
-    grant_type: "refresh_token",
+    grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    assertion,
   });
 
   let response;
   try {
-    response = await fetch(TOKEN_URL, {
+    response = await fetch(parsed.account.token_uri, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: payload,
       signal: AbortSignal.timeout(60000),
     });
   } catch (error) {
-    fail(`Could not reach Google's token endpoint. ${error instanceof Error ? error.message : error}`);
+    fail(`Could not reach the service account token endpoint. ${error instanceof Error ? error.message : error}`);
   }
 
   const body = await readBody(response);
   if (!response.ok || !body.json?.access_token) {
-    const hint = /invalid_grant|expired|revoked/i.test(body.message)
-      ? " The refresh token was rejected. If the OAuth consent screen is still in Testing, Google expires these tokens after 7 days. Mint a new refresh token, or move the consent screen to Production (docs/ci-cd.md)."
-      : "";
-    fail(`OAuth token refresh failed (${response.status}).${hint}\n${body.message}`);
+    fail(
+      `Service account token exchange failed (${response.status}). Confirm the key still exists in IAM and that this service account email is added on the publisher in the developer dashboard.\n${safeTokenError(body.message)}`,
+    );
   }
   return body.json.access_token;
 }
@@ -208,6 +281,7 @@ async function main() {
 
   if (dryRun) {
     console.log("Dry run: secrets are present. Not calling the Chrome Web Store.");
+    console.log("Would mint an access token from CHROME_SERVICE_ACCOUNT_JSON, then POST the zip.");
     console.log(`Would POST the zip to ${uploadUrl(process.env)}`);
     if (target === "publish") {
       console.log(`Would then POST :publish with publishType DEFAULT_PUBLISH (submit for review, then publish on approval).`);
@@ -224,7 +298,7 @@ async function main() {
     status = await fetchStatus(token, process.env);
   } catch (error) {
     fail(
-      `Could not read the current store item before upload. Check CHROME_EXTENSION_ID, CHROME_PUBLISHER_ID, and that this Google account owns the item.\n${explainStoreError(error)}`,
+      `Could not read the current store item before upload. Check CHROME_EXTENSION_ID, CHROME_PUBLISHER_ID, and that this service account is added on the publisher.\n${explainStoreError(error)}`,
     );
   }
 

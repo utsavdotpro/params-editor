@@ -15,12 +15,12 @@ Chrome Web Store deploys for Params Editor. Nothing in this pipeline changes ext
 | [`scripts/bump-version.mjs`](../scripts/bump-version.mjs) | One bump for `public/manifest.json` and `package.json`. Local and CI use this script. |
 | [`scripts/assert-version.mjs`](../scripts/assert-version.mjs) | Fails if the two version fields differ, or if the new version is not strictly greater. |
 | [`scripts/package-extension.mjs`](../scripts/package-extension.mjs) | Zips `dist/` so `manifest.json` is at the archive root. |
-| [`scripts/publish-cws.mjs`](../scripts/publish-cws.mjs) | OAuth refresh, then Chrome Web Store API **v2**. |
+| [`scripts/publish-cws.mjs`](../scripts/publish-cws.mjs) | Service-account JWT, then Chrome Web Store API **v2**. |
 | `pnpm run build:prod` | `webpack --mode production --devtool false`. `pnpm run build` is still the development build. |
 
 There is no third-party Chrome Web Store action. Upload is the small Node script above. `pnpm/action-setup@v4` only installs pnpm so `actions/setup-node` can cache the lockfile. `actions/upload-artifact@v4` keeps the zip on the workflow run.
 
-API choice: Chrome Web Store API v2 (`chromewebstore.googleapis.com`). Google turned the v1.1 API off on 15 October 2026. v2 needs the publisher id in the path. The same OAuth scope and refresh token as v1 still work.
+API choice: Chrome Web Store API v2 (`chromewebstore.googleapis.com`). Google turned the v1.1 API off on 15 October 2026. v2 needs the publisher id in the path. Each run signs a short-lived JWT with the service account key and exchanges it for an access token. There is no stored refresh token.
 
 The store API cannot create the first listing. Upload the first package in the [developer dashboard](https://chrome.google.com/webstore/devconsole), including the store listing and privacy tabs, before this workflow can update it.
 
@@ -31,7 +31,7 @@ The store API cannot create the first listing. Upload the first package in the [
 1. The runner bumps `public/manifest.json` and `package.json` with `scripts/bump-version.mjs`.
 2. It fails if that version is not strictly greater than the version it just read.
 3. It production-builds and zips `dist/`.
-4. It checks the five secrets. Missing or malformed ids stop here with their names.
+4. It checks the three secrets. Missing or malformed values stop here with their names.
 5. It uploads the zip. `publish` then calls `:publish`. `upload-only` does not.
 6. Only after the store accepts the upload does the workflow commit `chore: release vX.Y.Z` to `main`, create annotated tag `vX.Y.Z`, and open a GitHub Release with the zip attached.
 
@@ -91,21 +91,17 @@ GitHub → **Settings** → **Secrets and variables** → **Actions** → **New 
 | --- | --- |
 | `CHROME_EXTENSION_ID` | 32-character item id, letters `a`–`p` only. |
 | `CHROME_PUBLISHER_ID` | Publisher id from the developer dashboard. Required by API v2. |
-| `CHROME_CLIENT_ID` | OAuth client id from Google Cloud. |
-| `CHROME_CLIENT_SECRET` | OAuth client secret from the same client. |
-| `CHROME_REFRESH_TOKEN` | Long-lived refresh token for scope `https://www.googleapis.com/auth/chromewebstore`. |
+| `CHROME_SERVICE_ACCOUNT_JSON` | Full contents of the service account JSON key file. Not a path and not base64. |
 
 The workflow also needs **Settings → Actions → General → Workflow permissions → Read and write**. The default read-only token cannot push the release commit or the tag.
 
 If `main` is protected, allow `github-actions[bot]` to push to `main` and to create tags, or the commit step will fail after a successful upload. That still consumes the store version. Set the bypass before the first real publish.
 
-No other secrets are required. Do not add the access token. The script exchanges the refresh token at `https://oauth2.googleapis.com/token` on each run.
+No other secrets are required. Do not add an access token. Each release mints one from the service account key and drops it when the job ends. The key keeps working until you delete it in IAM. There is no consent screen.
 
 ### 1. Google account
 
 Use the Google account that owns the Chrome Web Store item. Turn on 2-step verification. The store requires it before you can publish.
-
-The Cloud project can live on this same account. The refresh token must be minted by the account that owns the items. Those can be different accounts. The token's account is the one that matters.
 
 ### 2. Google Cloud project and the API
 
@@ -114,40 +110,17 @@ The Cloud project can live on this same account. The refresh token must be minte
 3. APIs & Services → Library. Search **Chrome Web Store API**.
 4. Enable **Chrome Web Store API**.
 
-### 3. OAuth consent screen
+### 3. Service account and JSON key → `CHROME_SERVICE_ACCOUNT_JSON`
 
-1. APIs & Services → OAuth consent screen.
-2. User type **External** → Create. (Use Internal only if this is a Google Workspace org and the publisher account is inside it.)
-3. App name, user support email, and developer contact email. Save and continue.
-4. Scopes: you can skip this page. The playground requests the scope in the next section.
-5. Test users: add the Gmail address of the store owner. Save and continue.
+1. IAM & Admin → Service accounts → **Create service account**.
+2. Name it `params-editor-release`. No roles are required. Skip the optional permission steps and create it.
+3. Open that service account → **Keys** → **Add key** → **Create new key** → **JSON** → Create. The browser downloads a key file.
+4. Open the [developer dashboard](https://chrome.google.com/webstore/devconsole) → **Account**. Add the service account email (`…@….iam.gserviceaccount.com`). A publisher can have one service account.
+5. Open the downloaded JSON file and copy its **entire contents** into the `CHROME_SERVICE_ACCOUNT_JSON` repository secret. Paste the JSON itself. Do not paste a file path, and do not base64-encode it.
 
-Leave the app in **Testing** until the refresh token works. See the 7-day limit under Troubleshooting before you rely on it weekly.
+The workflow passes that secret to `scripts/publish-cws.mjs` as an environment variable. The script parses it in memory, signs a JWT with `client_email` and `private_key`, and exchanges the JWT at `token_uri` (usually `https://oauth2.googleapis.com/token`). It does not write the key to disk and does not print it. Scope is `https://www.googleapis.com/auth/chromewebstore`.
 
-### 4. OAuth client
-
-1. APIs & Services → Credentials → Create credentials → **OAuth client ID**.
-2. Application type: **Web application**.
-3. Name: `params-editor-release`.
-4. Authorized redirect URIs: `https://developers.google.com/oauthplayground`
-5. Create. Copy the client id and client secret into `CHROME_CLIENT_ID` and `CHROME_CLIENT_SECRET`.
-
-### 5. Refresh token
-
-1. Open [OAuth 2.0 Playground](https://developers.google.com/oauthplayground).
-2. Gear icon → check **Use your own OAuth credentials**.
-3. Paste the client id and client secret. Close the dialog.
-4. In "Input your own scopes", enter exactly:
-
-   `https://www.googleapis.com/auth/chromewebstore`
-
-5. Authorize APIs. Sign in as the store owner. If the app is unverified, continue past the warning. This is your own client.
-6. Exchange authorization code for tokens.
-7. Copy the **refresh token** (not the access token, which expires in about an hour) into `CHROME_REFRESH_TOKEN`.
-
-Confirm the exchange response includes scope `https://www.googleapis.com/auth/chromewebstore`. If the playground created a refresh token without that scope, the upload will fail later.
-
-### 6. Extension id → `CHROME_EXTENSION_ID`
+### 4. Extension id → `CHROME_EXTENSION_ID`
 
 Either:
 
@@ -156,7 +129,7 @@ Either:
 
 The unpacked local id and the published id match only when the extension is loaded with the store's key. Use the id shown on the published item, not a random unpacked load.
 
-### 7. Publisher id → `CHROME_PUBLISHER_ID`
+### 5. Publisher id → `CHROME_PUBLISHER_ID`
 
 1. Open the [developer dashboard](https://chrome.google.com/webstore/devconsole).
 2. If the account belongs to more than one publisher, switch to the publisher that owns Params Editor.
@@ -167,7 +140,7 @@ That id is not the extension id. v2 returns a confusing 404 when they are swappe
 
 ## Test with upload-only before the first public submit
 
-1. Put all five secrets in the repo.
+1. Put all three secrets in the repo.
 2. Actions → Release → Run workflow on `main`.
 3. First pass: bump `patch`, publish target `publish`, **dry run checked**. Expect a green run, a zip artifact, and no new commit.
 4. Second pass: bump `patch`, publish target **`upload-only`**, dry run unchecked.
@@ -203,7 +176,7 @@ unzip -l params-editor-*.zip
 node scripts/publish-cws.mjs --dry-run
 ```
 
-That exits 1 and prints the five secret names. It does not call Google.
+That exits 1 and prints the three secret names. It does not call Google.
 
 ## Troubleshooting
 
@@ -211,8 +184,9 @@ That exits 1 and prints the five secret names. It does not call Google.
 | --- | --- |
 | `Missing GitHub Actions secrets` and a list of names | Add those repository secrets. Names must match exactly. Environment secrets are invisible to this workflow because it does not set `environment:`. |
 | `CHROME_EXTENSION_ID must be the 32-character...` | The value has the wrong length or a character outside `a`–`p`. The log does not print the value. |
-| `invalid_grant` or a note about 7 days | The consent screen is in Testing. Google expires that refresh token after 7 days. Mint a new one in the playground, or click **Publish app** on the consent screen so the token stops expiring weekly. Publishing the consent screen can show an unverified-app warning on the next consent. That is still your own client and your own account. |
-| `Could not read the current store item` / 404 | Publisher id and extension id are swapped, the token's Google account does not own the item, or the first listing was never created in the dashboard. |
+| `CHROME_SERVICE_ACCOUNT_JSON is not valid JSON` or `missing private_key` | The secret is not the full key file. Paste the JSON object, including `type`, `client_email`, and `private_key`. The log does not print the value. |
+| `Service account token exchange failed` | The key was deleted or disabled in IAM, or the service account email is not added under Developer Dashboard → Account. Create a new JSON key only if the old one is gone. A valid key does not expire on its own. |
+| `Could not read the current store item` / 404 | Publisher id and extension id are swapped, the service account is not linked to that publisher, or the first listing was never created in the dashboard. |
 | `versions must strictly increase` before upload | The manifest was not bumped past the version already published or submitted. Dispatch again with a bump, or remove the stuck submission. |
 | Store error that mentions version, during upload | Same rule, caught by the API. The workflow has not committed if `.cws-upload-result.json` was not written. |
 | Upload succeeded, publish failed | The version is on the item. The workflow commits it when the result file exists. Publish from the dashboard, or cancel and ship a higher version. Check whether visibility was changed and needs one manual publish. |
