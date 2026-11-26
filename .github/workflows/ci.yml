@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, test, and production build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Production build
+        run: pnpm run build:prod
+
+      - name: Source, package, and built manifest versions match
+        run: node scripts/assert-version.mjs
+
+      - name: Built manifest matches the source version
+        run: |
+          node --input-type=module -e "
+          import fs from 'node:fs';
+          const source = JSON.parse(fs.readFileSync('public/manifest.json', 'utf8')).version;
+          const built = JSON.parse(fs.readFileSync('dist/manifest.json', 'utf8')).version;
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+          if (source !== built || source !== pkg) {
+            console.error('Version drift after production build', { source, built, pkg });
+            process.exit(1);
+          }
+          if (!fs.existsSync('dist/manifest.json')) {
+            console.error('dist/manifest.json was not emitted at the package root');
+            process.exit(1);
+          }
+          console.log('Production manifest version', built);
+          "

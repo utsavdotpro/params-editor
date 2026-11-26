@@ -54,3 +54,11 @@ npm run watch
 ## Building
 
 The extension is built using webpack. The output will be in the `dist` directory, which is what you'll load into Chrome.
+
+Production packages for the Chrome Web Store use `pnpm run build:prod` (`webpack --mode production --devtool false`). `pnpm run build` stays the local development build.
+
+## CI/CD
+
+Pull requests and pushes to `main` run typecheck, tests, and a production build. A push to `main` also reads the Chrome Web Store version, patch-bumps above it in the runner, and submits that build. The repository version is only a floor.
+
+Setup, the secret list, and how to do a first upload-only release are in [docs/ci-cd.md](docs/ci-cd.md).
